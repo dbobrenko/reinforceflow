@@ -38,7 +38,7 @@ def get_learning_rate(optimizer):
         return optimizer._learning_rate  # pylint: disable=W0212
     elif hasattr(optimizer, '_lr'):
         return optimizer._lr  # pylint: disable=W0212
-    raise ValueError("Cannot get optimizer's (%s) learning rate." % optimizer)
+    raise ValueError("Cannot get optimizer (%s) learning rate." % optimizer)
 
 
 def set_learning_rate(optimizer, learning_rate):
@@ -46,7 +46,8 @@ def set_learning_rate(optimizer, learning_rate):
         optimizer._learning_rate = learning_rate  # pylint: disable=W0212
     elif hasattr(optimizer, '_lr'):
         optimizer._lr = learning_rate  # pylint: disable=W0212
-    raise ValueError("Cannot get optimizer's (%s) learning rate." % optimizer)
+    else:
+        raise ValueError("Cannot get optimizer (%s) learning rate." % optimizer)
 
 
 def create_optimizer(opt, learning_rate=None, decay=None, global_step=None, decay_poly_steps=None,
@@ -107,8 +108,6 @@ def create_decay(decay, global_step, learning_rate=None, decay_steps=None, end_l
                  decay_rate=0.96):
     if callable(decay) and hasattr(decay, __name__):
         decay = decay.__name__
-    else:
-        raise ValueError('Decay should be either a decay function or a function name string.')
     if isinstance(decay, six.string_types):
         decay = decay.lower()
         if decay in ['polynomial_decay', 'polynomial', 'poly']:
@@ -121,6 +120,8 @@ def create_decay(decay, global_step, learning_rate=None, decay_steps=None, end_l
             learning_rate = tf.train.exponential_decay(learning_rate, global_step, decay_steps, decay_rate=decay_rate)
         else:
             raise ValueError('Unknown decay function %s. Available: %s' % (decay, ', '.join(__DECAY_MAP__)))
+    else:
+        raise ValueError('Decay should be either a decay function or a function name string.')
     return learning_rate
 
 

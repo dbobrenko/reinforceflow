@@ -16,6 +16,7 @@ from reinforceflow import logger
 # TODO: Log more info to tensorboard
 # TODO: Make Environment Factory
 # TODO: Make preprocessing function (in graph)
+# TODO: Remove train_on_batch from public methods or add setup/compile method
 
 
 class DqnAgent(DiscreteAgent):
@@ -80,7 +81,7 @@ class DqnAgent(DiscreteAgent):
             self._target_obs, self._target_q, _ = net_fn(input_shape=[None] + self.env.obs_shape,
                                                          output_size=self.env.action_shape)
 
-        with tf.variable_scope('_target_update'):
+        with tf.variable_scope('target_update'):
             target_w = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'target_network')
             w = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'network')
             self._target_update = [target_w[i].assign(w[i]) for i in range(len(target_w))]
@@ -88,6 +89,7 @@ class DqnAgent(DiscreteAgent):
         with tf.variable_scope('optimizer'):
             self.global_step = tf.contrib.framework.get_or_create_global_step()
             self.opt, self.lr = misc.create_optimizer(opt, learning_rate, decay=decay,
+                                                      global_step=self.global_step,
                                                       decay_poly_steps=decay_poly_steps,
                                                       decay_poly_end_lr=decay_poly_end_lr,
                                                       decay_poly_power=decay_poly_power,
@@ -137,7 +139,7 @@ class DqnAgent(DiscreteAgent):
         for _ in range(episodes):
             ep_reward = 0
             obs = self.env.reset()
-            for step in range(max_steps):
+            for step in range(int(max_steps)):
                 if render:
                     self.env.render()
                 reward_per_action = self.predict(obs)
@@ -168,7 +170,7 @@ class DqnAgent(DiscreteAgent):
         with tf.Session() as self.sess:
             self.sess.run(tf.global_variables_initializer())
             obs = self.env.reset()
-            for step in range(max_steps):
+            for step in range(int(max_steps)):
                 if render:
                     self.env.render()
                 reward_per_action = self.predict(obs)
