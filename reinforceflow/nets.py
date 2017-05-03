@@ -39,7 +39,7 @@ def dqn(input_shape, output_size):
     return inputs, net, end_points
 
 
-def mlp(input_shape, output_size, layers=(16, 16, 16), output_activation=None):
+def mlp(input_shape, output_size, layers=(16, 16), output_activation=None):
     end_points = {}
     inputs = tf.placeholder('float32', shape=input_shape, name='inputs')
     end_points['inputs'] = inputs
@@ -48,6 +48,16 @@ def mlp(input_shape, output_size, layers=(16, 16, 16), output_activation=None):
         name = 'fc%d' % i
         net = tf.layers.dense(net, units=units, activation=tf.nn.relu, name=name)
         end_points[name] = net
+    net = tf.layers.dense(net, units=output_size, activation=output_activation, name='outs')
+    end_points['outs'] = net
+    return inputs, net, end_points
+
+
+def linear_regression(input_shape, output_size, output_activation=None):
+    end_points = {}
+    inputs = tf.placeholder('float32', shape=input_shape, name='inputs')
+    end_points['inputs'] = inputs
+    net = tf.contrib.layers.flatten(inputs)
     net = tf.layers.dense(net, units=output_size, activation=output_activation, name='outs')
     end_points['outs'] = net
     return inputs, net, end_points

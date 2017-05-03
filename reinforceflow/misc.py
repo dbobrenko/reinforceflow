@@ -54,17 +54,16 @@ def create_optimizer(opt, learning_rate=None, decay=None, global_step=None, deca
                      decay_poly_end_lr=0.0001, decay_poly_power=1.0, decay_rate=0.96):
     replace_existed_lr = False
     if isinstance(opt, base_optimizer.Optimizer):
-        if learning_rate is None:
-            learning_rate = get_learning_rate(opt)
-            # Check for possible decay in optimizer's learning rate
-            if isinstance(learning_rate, ops.Tensor) and learning_rate.get_shape().ndims == 0:
-                if decay:
-                    logger.warn('Passed optimizer already has learning rate of type Tensor. '
-                                'Skipping learning rate decay (%s), while '
-                                'leaving original learning rate Tensor (%s) unchanged.' % (decay, learning_rate))
-                    return opt, learning_rate
-            else:
-                replace_existed_lr = True
+        learning_rate = get_learning_rate(opt)
+        # Check for possible decay in optimizer's learning rate
+        if isinstance(learning_rate, ops.Tensor) and learning_rate.get_shape().ndims == 0:
+            if decay:
+                logger.warn('Passed optimizer already has learning rate of type Tensor. '
+                            'Skipping learning rate decay (%s), while '
+                            'leaving original learning rate Tensor (%s) unchanged.' % (decay, learning_rate))
+                return opt, learning_rate
+        else:
+            replace_existed_lr = True
 
     if learning_rate is None:
         raise ValueError("Learning rate should be specified, in order to instantiate optimizer %s." % opt)
@@ -72,9 +71,9 @@ def create_optimizer(opt, learning_rate=None, decay=None, global_step=None, deca
     # Check for possible decay in learning rate
     if isinstance(learning_rate, ops.Tensor) and learning_rate.get_shape().ndims == 0:
         if decay:
-            logger.warn('Passed learning rate is already of type Tensor. '
-                        'Skipping learning rate decay (%s), while '
-                        'leaving original learning rate Tensor (%s) unchanged.' % (decay, learning_rate))
+            logger.warn("Passed learning rate is already of type Tensor. "
+                        "Skipping learning rate decay (%s), while "
+                        "leaving it's original learning rate Tensor (%s) unchanged." % (decay, learning_rate))
     elif isinstance(learning_rate, (float, int)):
         if learning_rate < 0.0:
             raise ValueError("Learning rate should be >= 0. Got: %s.", learning_rate)
@@ -84,14 +83,16 @@ def create_optimizer(opt, learning_rate=None, decay=None, global_step=None, deca
                 raise ValueError('Global step should be specified, in order to use learning rate decay.')
             learning_rate = create_decay(decay, global_step, learning_rate, decay_poly_steps, decay_poly_end_lr,
                                          decay_poly_power, decay_rate)
-            if replace_existed_lr:
-                set_learning_rate(opt, learning_rate)
-                return opt, learning_rate
+        if replace_existed_lr:
+            set_learning_rate(opt, learning_rate)
+            return opt, learning_rate
     else:
         raise ValueError("Learning rate should be 0d Tensor or float. "
                          "Got %s of type %s" % (str(learning_rate), str(type(learning_rate))))
 
     if isinstance(opt, type) and issubclass(opt, base_optimizer.Optimizer):
+        opt = opt(learning_rate=learning_rate)
+    elif callable(opt):
         opt = opt(learning_rate=learning_rate)
     elif isinstance(opt, six.string_types):
         opt = opt.lower()
@@ -99,8 +100,8 @@ def create_optimizer(opt, learning_rate=None, decay=None, global_step=None, deca
             raise ValueError("Unknown optimizer name %s. Available: %s." % (opt, ', '.join(__OPTIMIZER_MAP__)))
         opt = __OPTIMIZER_MAP__[opt](learning_rate=learning_rate)
     else:
-        raise ValueError("Unknown optimizer %s. Should be either a class name string, subclass of Optimizer or "
-                         "instance of Optimizer." % str(opt))
+        raise ValueError("Unknown optimizer %s. Should be either a class name string, subclass of Optimizer, "
+                         "instance of Optimizer or any callable object with `learning_rate` argument." % str(opt))
     return opt, learning_rate
 
 
@@ -125,33 +126,35 @@ def create_decay(decay, global_step, learning_rate=None, decay_steps=None, end_l
     return learning_rate
 
 
-class AgentSummary(object):
-    # TODO: add histograms and images
-    def __init__(self, sess, logdir, *variables, scalar_tags=[]):
-        self.sess = sess
-
-        self.writer = tf.summary.FileWriter(logdir, sess.graph)
-        summaries = set(tf.get_collection(tf.GraphKeys.SUMMARIES))
-        for variable in variables:
-            summaries.add(tf.summary.histogram('weights/%s' % variable.op.name, variable))
-            summaries.add(tf.summary.scalar('weights_sparsity/%s' % variable.op.name, tf.nn.zero_fraction(variable)))
-
-        self.scalar_ph = {}
-        for key in scalar_tags:
-            self.scalar_ph[key] = tf.placeholder(dtype='float32')
-            summaries.add(tf.summary.scalar(key, self.scalar_ph[key]))
-
-        # self.histogram_ph = {}
-        # for key in histogram_tags:
-        #     self.histogram_ph[key] = tf.placeholder(dtype='float32', shape=[None, None], name=key)
-        #     summaries.add(tf.summary.histogram(key, self.scalar_ph[key]))
-        self.summary_op = tf.summary.merge(list(summaries), name='summary_op')
-
-    def write_summary(self, step, sess=None, summary_dict={}):
-        self.sess = sess or self.sess
-        summary_vars = self.sess.run(self.summary_op, {self.scalar_ph[k]: v for k, v in summary_dict.items()})
-        self.writer.add_summary(summary_vars, global_step=step)
-
-
 def discount_rewards(rewards, gamma):
     return lfilter([1], [1, -gamma], rewards[::-1])[::-1]
+
+
+class IncrementalAverage(object):
+    def __init__(self):
+        self._total = 0.0
+        self._counter = 0
+        self.add = self.__add__
+
+    def __add__(self, other):
+        self._total += other
+        self._counter += 1
+
+    def __iadd__(self, other):
+        self._total += other
+        self._counter += 1
+
+    def compute_average(self):
+        return self._total / (self._counter or 1)
+
+    def reset(self):
+        average = self.compute_average()
+        self._total = 0.0
+        self._counter = 0
+        return average
+
+    def __float__(self):
+        return self.compute_average()
+
+    def __repr__(self):
+        return str(self.compute_average())

@@ -60,7 +60,7 @@ class EnvWrapper(object):
         Examples:
             >>> preds = model(observation)
             >>> _action = env.prepare_action(preds)
-            >>> env.step(_action)
+            >>> env.step(action)
             >>> # ...
         """
         if self.is_cont_action:

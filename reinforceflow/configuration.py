@@ -3,12 +3,11 @@ from __future__ import print_function
 from __future__ import division
 
 import logging
-import logging.config
 import sys
 import random
 import tensorflow as tf
 
-__RANDOM_SEED__ = random.randint(0, 2**31 - 1)
+__RANDOM_SEED__ = None
 
 
 def set_random_seed(seed):

@@ -25,10 +25,11 @@ class EGreedyPolicy(Policy):
         self._anneal_steps = anneal_steps
         self._epsilon = self._start
         self._anneal_range = self._start - self._final
+        self.epsilon = eps_start
 
     def select_action(self, prediction, env, step):
-        epsilon = self._update_epsilon(step)
-        if random.random() > epsilon:
+        self.epsilon = self._update_epsilon(step)
+        if random.random() > self.epsilon:
             return env.prepare_action(prediction)
         else:
             return env.action_space.sample()
