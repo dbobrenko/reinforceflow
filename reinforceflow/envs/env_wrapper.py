@@ -6,6 +6,7 @@ import gym
 from gym import spaces
 import numpy as np
 from reinforceflow import error
+from reinforceflow.core import NullPreprocessor
 
 
 class EnvWrapper(object):
@@ -23,7 +24,7 @@ class EnvWrapper(object):
         action_shape (): TODO
         action_info (): TODO
     """
-    def __init__(self, env):
+    def __init__(self, env, preprocessor=NullPreprocessor(), action_repeat=0, random_start=0):
         self.env = env
         self.has_multiple_action = not isinstance(env.action_space, spaces.Discrete)
         self.is_cont_action = self.is_continuous(env.action_space)
@@ -32,6 +33,10 @@ class EnvWrapper(object):
         self.is_cont_obs = self.is_continuous(env.observation_space)
         self.obs_info = self.space_info(env.observation_space)
         self.obs_shape = self.space_shape(env.observation_space)
+        self.preprocessor = preprocessor or (lambda x: x)
+        self._action_repeat = action_repeat or 1
+        self.random_start = random_start
+        self._needs_stack_reset = False
 
     def _obs2vec(self, obs):
         if self.is_cont_obs:
@@ -59,7 +64,7 @@ class EnvWrapper(object):
 
         Examples:
             >>> preds = model(observation)
-            >>> _action = env.prepare_action(preds)
+            >>> action = env.prepare_action(preds)
             >>> env.step(action)
             >>> # ...
         """
@@ -68,7 +73,7 @@ class EnvWrapper(object):
 
         decoded_action = []
         offset = 0
-        # Process cases with `Tuple<Discrete>` _action spaces
+        # Process cases with `Tuple<Discrete>` action spaces
         for info in self.action_info:
             decoded_action.append(np.argmax(prediction[offset:info['size']]))
             offset += info['size']
@@ -78,8 +83,16 @@ class EnvWrapper(object):
         return decoded_action
 
     def step(self, action):
-        obs_next, reward, done, info = self.env.step(action)
-        return self._obs2vec(obs_next), reward, done, info
+        stack_reset = self._needs_stack_reset
+        self._needs_stack_reset = False
+        reward_accum = 0
+        for _ in range(self._action_repeat):
+            obs, reward, done, info = self.env.step(action)
+            reward_accum += reward
+            if done:
+                self._needs_stack_reset = True
+                break
+        return self.preprocessor(self._obs2vec(obs), reset=stack_reset), reward_accum, done, info
 
     def reset(self):
         return self._obs2vec(self.env.reset())

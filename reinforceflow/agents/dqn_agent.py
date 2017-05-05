@@ -186,14 +186,12 @@ class DQNAgent(DiscreteAgent):
               max_steps,
               log_dir,
               render=False,
-              batch_size=32,
               target_freq=10000,
               gamma=0.99,
-              experience_min=50000,
               checkpoint=None,
-              experience=ExperienceReplay(size=1000000),
+              experience=ExperienceReplay(size=1000000, batch_size=32, min_size=50000),
               policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=1000000),
-              log_freq=2000,
+              log_freq=100,
               checkpoint_freq=20000):
         ep_reward = misc.IncrementalAverage()
         ep_q = misc.IncrementalAverage()
@@ -222,8 +220,8 @@ class DQNAgent(DiscreteAgent):
                     obs = obs_next
 
                     # Update step:
-                    if experience.size > experience_min:
-                        batch = experience.sample(batch_size)
+                    if experience.is_ready:
+                        batch = experience.sample()
                         tr_obs = []
                         tr_action = []
                         tr_reward = []
@@ -264,7 +262,7 @@ class DQNAgent(DiscreteAgent):
                                                  tf.Summary.Value(tag='metrics/test_r', simple_value=test_r),
                                                  tf.Summary.Value(tag='metrics/test_q', simple_value=test_q),
                                                  tf.Summary.Value(tag='agent/epsilon', simple_value=policy.epsilon),
-                                                 tf.Summary.Value(tag='step_per_sec', simple_value=step_per_sec),
+                                                 tf.Summary.Value(tag='step/sec', simple_value=step_per_sec),
                                                  ]
                                 self._writer.add_summary(tf.Summary(value=custom_values), global_step=step)
                                 self._writer.add_summary(summary_str, global_step=step)

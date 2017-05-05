@@ -6,7 +6,7 @@ from reinforceflow.configuration import set_random_seed
 from reinforceflow.configuration import get_random_seed
 from reinforceflow.configuration import logger
 from reinforceflow.configuration import logger_setup
-from reinforceflow.version import VERSION as __version__
+from reinforceflow.version import __version__
 
 logger_setup()
 
