@@ -13,10 +13,8 @@ reinforceflow.set_random_seed(321)
 
 
 env = EnvFactory.make('CartPole-v0')
-# or:
-# env = gym.make('CartPole-v0')
 opt = tf.train.RMSPropOptimizer(learning_rate=0.0001)
-steps = 2000000
+steps = 70000
 agent = DQNAgent(env, net_fn=mlp, opt=opt)
 agent.train(max_steps=steps,
             log_dir='/tmp/reinforceflow/%s/rms/' % env.spec.id[:-3],

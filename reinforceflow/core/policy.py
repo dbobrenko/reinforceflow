@@ -11,9 +11,6 @@ class Policy(object):
 
 
 class GreedyPolicy(Policy):
-    def __init__(self):
-        self.__apply__ = self.select_action
-
     def select_action(self, prediction, env):
         return env.prepare_action(prediction)
 

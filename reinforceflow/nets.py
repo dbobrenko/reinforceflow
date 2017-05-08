@@ -1,9 +1,14 @@
 from __future__ import absolute_import
 
+import numpy as np
 import tensorflow as tf
 
 
 def dqn(input_shape, output_size):
+    output_size = np.ravel(output_size)
+    if len(output_size) != 1:
+        raise ValueError('Output size must be scalar or rank 1 nd.array.')
+    output_size = output_size[0]
     end_points = {}
     inputs = tf.placeholder('float32', shape=input_shape, name='inputs')
     end_points['inputs'] = inputs

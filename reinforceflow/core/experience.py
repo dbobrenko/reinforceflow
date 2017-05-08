@@ -7,7 +7,7 @@ from collections import deque
 
 
 class ExperienceReplay(object):
-    def __init__(self, size, batch_size, min_size=0):
+    def __init__(self, size, min_size, batch_size):
         self.memory = deque(maxlen=size)
         self.min_size = min_size
         self.batch_size = batch_size

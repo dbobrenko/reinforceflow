@@ -4,21 +4,20 @@ from __future__ import division
 
 import sys
 import time
-from six.moves import range
 import os
+from six.moves import range
 import numpy as np
 import tensorflow as tf
+
 from reinforceflow.agents import DiscreteAgent
 from reinforceflow.core import ExperienceReplay
 from reinforceflow.nets import dqn
 from reinforceflow.core import EGreedyPolicy, GreedyPolicy
 from reinforceflow import misc
 from reinforceflow import logger
+
 # TODO: Test & write unittests
 # TODO: Add comments & documentation
-# TODO: Log more info to tensorboard
-# TODO: Make Environment Factory
-# TODO: Make preprocessing function (in graph)
 # TODO: Remove train_on_batch from public methods or add setup/compile method
 # TODO: Make Base TFAgent or DeepAgent class
 
@@ -45,9 +44,7 @@ class DQNAgent(DiscreteAgent):
             sess: TensorFlow Session
             net_fn: Function, that takes `input_shape` and `output_size` arguments,
                     and returns (input Tensor, output Tensor, all end point Tensors)
-            epsilon (float): The probability for epsilon-greedy exploration, expected to be in range [0; 1]
             gradient_clip (float): Norm gradient clipping, to disable, pass 0 or None
-            log_dir (str): path to directory, where all agent's outputs will be saved (session, summary, logs, etc)
             opt: An optimizer instance, optimizer name, or optimizer class
             learning_rate (float or Tensor): Should be provided, if `opt` is optimizer class or name
             decay: Learning rate decay. Should be provided decay function, or decay function name.
@@ -73,10 +70,11 @@ class DQNAgent(DiscreteAgent):
         with tf.variable_scope('network'):
             self._action = tf.placeholder('int32', [None], name='action')
             self._reward = tf.placeholder('float32', [None], name='reward')
-            self._obs, self._q, _ = net_fn(input_shape=[None] + self.env.obs_shape, output_size=self.env.action_shape)
+            self._obs, self._q, _ = net_fn(input_shape=[None] + self.env.observation_shape,
+                                           output_size=self.env.action_shape)
 
         with tf.variable_scope('target_network'):
-            self._target_obs, self._target_q, _ = net_fn(input_shape=[None] + self.env.obs_shape,
+            self._target_obs, self._target_q, _ = net_fn(input_shape=[None] + self.env.observation_shape,
                                                          output_size=self.env.action_shape)
 
         with tf.variable_scope('target_update'):
@@ -109,9 +107,9 @@ class DQNAgent(DiscreteAgent):
         for grad, w in grads_vars:
             tf.summary.histogram(w.name, w)
             tf.summary.histogram('gradients/' + w.name, grad)
-        if len(self.env.obs_shape) == 1:
+        if len(self.env.observation_shape) == 1:
             tf.summary.histogram('agent/observation', self._obs)
-        elif len(self.env.obs_shape) <= 3:
+        elif len(self.env.observation_shape) <= 3:
             tf.summary.image('agent/observation', self._obs)
         else:
             logger.warn('Cannot create summary for observation with shape %s' % self.env.obs_shape)
@@ -182,17 +180,17 @@ class DQNAgent(DiscreteAgent):
             ep_rewards.add(reward_accum)
         return ep_rewards.compute_average(), ep_q.compute_average()
 
-    def train(self,
-              max_steps,
-              log_dir,
-              render=False,
-              target_freq=10000,
-              gamma=0.99,
-              checkpoint=None,
-              experience=ExperienceReplay(size=1000000, batch_size=32, min_size=50000),
-              policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=1000000),
-              log_freq=100,
-              checkpoint_freq=20000):
+    def _train(self,
+               max_steps,
+               log_dir,
+               render,
+               target_freq,
+               gamma,
+               checkpoint,
+               experience,
+               policy,
+               log_freq,
+               checkpoint_freq):
         ep_reward = misc.IncrementalAverage()
         ep_q = misc.IncrementalAverage()
         reward_accum = 0
@@ -204,78 +202,92 @@ class DQNAgent(DiscreteAgent):
             if checkpoint:
                 self.load_weights(checkpoint)
             obs = self.env.reset()
-            try:
-                last_time = time.time()
-                last_step = self.sess.run(self.global_step)
-                for _ in range(int(max_steps)):
-                    step = self.sess.run(self.global_step)
-                    if render:
-                        self.env.render()
-                    reward_per_action = self.predict(obs)
-                    action = policy.select_action(reward_per_action, self.env, step)
-                    obs_next, reward, term, info = self.env.step(action)
-                    reward_accum += reward
-                    reward = np.clip(reward, -1, 1)
-                    experience.add({'obs': obs, 'action': action, 'reward': reward, 'obs_next': obs_next, 'term': term})
-                    obs = obs_next
+            last_time = time.time()
+            last_step = self.sess.run(self.global_step)
+            for _ in range(int(max_steps)):
+                step = self.sess.run(self.global_step)
+                if render:
+                    self.env.render()
+                reward_per_action = self.predict(obs)
+                action = policy.select_action(reward_per_action, self.env, step)
+                obs_next, reward, term, info = self.env.step(action)
+                reward_accum += reward
+                reward = np.clip(reward, -1, 1)
+                experience.add({'obs': obs, 'action': action, 'reward': reward, 'obs_next': obs_next, 'term': term})
+                obs = obs_next
 
-                    # Update step:
-                    if experience.is_ready:
-                        batch = experience.sample()
-                        tr_obs = []
-                        tr_action = []
-                        tr_reward = []
-                        for transition in batch:
-                            tr_obs.append(transition['obs'])
-                            tr_action.append(transition['action'])
-                            td_target = transition['reward']
-                            if not transition['term']:
-                                q = np.max(self.predict_target(transition['obs_next']).flatten())
-                                td_target += gamma * q
-                                ep_q.add(q)
-                            tr_reward.append(td_target)
-                        summarize = term and log_freq and step - last_log_step > log_freq
-                        summary_str = self.train_on_batch(np.vstack(tr_obs), tr_action, tr_reward, summarize)
+                # Update step:
+                if experience.is_ready:
+                    batch = experience.sample()
+                    tr_obs = []
+                    tr_action = []
+                    tr_reward = []
+                    for transition in batch:
+                        tr_obs.append(transition['obs'])
+                        tr_action.append(transition['action'])
+                        td_target = transition['reward']
+                        if not transition['term']:
+                            q = np.max(self.predict_target(transition['obs_next']).flatten())
+                            td_target += gamma * q
+                            ep_q.add(q)
+                        tr_reward.append(td_target)
+                    summarize = term and log_freq and step - last_log_step > log_freq
+                    summary_str = self.train_on_batch(np.vstack(tr_obs), tr_action, tr_reward, summarize)
 
-                        if step % target_freq == target_freq-1:
-                            self.update_target()
+                    if step % target_freq == target_freq-1:
+                        self.update_target()
 
-                        if log_dir and step % checkpoint_freq == checkpoint_freq-1:
-                            self.save_weights(log_dir)
+                    if log_dir and step % checkpoint_freq == checkpoint_freq-1:
+                        self.save_weights(log_dir)
 
-                        # Eval & log
-                        if summarize:
-                            last_log_step = step
-                            train_r = ep_reward.reset()
-                            train_q = ep_q.reset()
-                            test_r, test_q = self.test(episodes=3)
-                            logger.info("Train. Average Ep Reward: %.2f. Average Q value: %.2f. Step: %d. Ep: %d"
-                                        % (train_r, train_q, step, episode))
-                            logger.info("Test. Average Ep Reward: %.2f. Average Q value: %.2f. Step: %d. Ep: %d"
-                                        % (test_r, test_q, step, episode))
-                            if log_dir and summary_str:
-                                step_per_sec = (step - last_step) / (time.time() - last_time)
-                                last_time = time.time()
-                                last_step = step
-                                custom_values = [tf.Summary.Value(tag='metrics/train_r', simple_value=train_r),
-                                                 tf.Summary.Value(tag='metrics/train_q', simple_value=train_q),
-                                                 tf.Summary.Value(tag='metrics/test_r', simple_value=test_r),
-                                                 tf.Summary.Value(tag='metrics/test_q', simple_value=test_q),
-                                                 tf.Summary.Value(tag='agent/epsilon', simple_value=policy.epsilon),
-                                                 tf.Summary.Value(tag='step/sec', simple_value=step_per_sec),
-                                                 ]
-                                self._writer.add_summary(tf.Summary(value=custom_values), global_step=step)
-                                self._writer.add_summary(summary_str, global_step=step)
-                    if term:
-                        episode += 1
-                        ep_reward.add(reward_accum)
-                        reward_accum = 0
-                        obs = self.env.reset()
-                logger.info('Training finished.')
-            except KeyboardInterrupt:
-                logger.info('Stopping training process...')
-                if log_dir:
-                    self.save_weights(log_dir)
-                sys.exit(0)
+                    # Eval & log
+                    if summarize:
+                        last_log_step = step
+                        train_r = ep_reward.reset()
+                        train_q = ep_q.reset()
+                        test_r, test_q = self.test(episodes=3)
+                        logger.info("Train. Average Ep Reward: %.2f. Average Q value: %.2f. Step: %d. Ep: %d"
+                                    % (train_r, train_q, step, episode))
+                        logger.info("Test. Average Ep Reward: %.2f. Average Q value: %.2f. Step: %d. Ep: %d"
+                                    % (test_r, test_q, step, episode))
+                        if log_dir and summary_str:
+                            step_per_sec = (step - last_step) / (time.time() - last_time)
+                            last_time = time.time()
+                            last_step = step
+                            custom_values = [tf.Summary.Value(tag='metrics/train_r', simple_value=train_r),
+                                             tf.Summary.Value(tag='metrics/train_q', simple_value=train_q),
+                                             tf.Summary.Value(tag='metrics/test_r', simple_value=test_r),
+                                             tf.Summary.Value(tag='metrics/test_q', simple_value=test_q),
+                                             tf.Summary.Value(tag='agent/epsilon', simple_value=policy.epsilon),
+                                             tf.Summary.Value(tag='step/sec', simple_value=step_per_sec),
+                                             ]
+                            self._writer.add_summary(tf.Summary(value=custom_values), global_step=step)
+                            self._writer.add_summary(summary_str, global_step=step)
+                if term:
+                    episode += 1
+                    ep_reward.add(reward_accum)
+                    reward_accum = 0
+                    obs = self.env.reset()
+
+    def train(self,
+              max_steps,
+              log_dir,
+              render=False,
+              target_freq=10000,
+              gamma=0.99,
+              checkpoint=None,
+              experience=ExperienceReplay(size=1000000, min_size=50000, batch_size=32),
+              policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=1000000),
+              log_freq=100,
+              checkpoint_freq=20000):
+        try:
+            self._train(max_steps, log_dir, render, target_freq, gamma, checkpoint, experience, policy, log_freq,
+                        checkpoint_freq)
+            logger.info('Training finished.')
+        except KeyboardInterrupt:
+            logger.info('Stopping training process...')
             if log_dir:
                 self.save_weights(log_dir)
+            sys.exit(0)
+        if log_dir:
+            self.save_weights(log_dir)

@@ -5,11 +5,11 @@ from __future__ import print_function
 import gym
 from gym import spaces
 import numpy as np
+import reinforceflow as rf
 from reinforceflow import error
-from reinforceflow.core import NullPreprocessor
 
 
-class EnvWrapper(object):
+class EnvWrapper(gym.Wrapper):
     """Light wrapper around `gym.core.Env`.
     Does basic preprocessings to simplify integration with algorithms.
 
@@ -19,168 +19,110 @@ class EnvWrapper(object):
     Attributes:
         env (gym.core.Env): TODO
         is_cont_action (bool): TODO
-        obs_info (): TODO
-        obs_shape (): TODO
-        action_shape (): TODO
-        action_info (): TODO
     """
-    def __init__(self, env, preprocessor=NullPreprocessor(), action_repeat=0, random_start=0):
-        self.env = env
+    def __init__(self, env):
+        super(EnvWrapper, self).__init__(env)
         self.has_multiple_action = not isinstance(env.action_space, spaces.Discrete)
-        self.is_cont_action = self.is_continuous(env.action_space)
-        self.action_shape = self.space_shape(env.action_space)
-        self.action_info = self.space_info(env.action_space)
-        self.is_cont_obs = self.is_continuous(env.observation_space)
-        self.obs_info = self.space_info(env.observation_space)
-        self.obs_shape = self.space_shape(env.observation_space)
-        self.preprocessor = preprocessor or (lambda x: x)
-        self._action_repeat = action_repeat or 1
-        self.random_start = random_start
-        self._needs_stack_reset = False
+        self.is_cont_action = self._is_continuous(env.action_space)
+        # obs_space = self.env.observation_space
+        # if isinstance(obs_space, spaces.Box):
+        #     self._observation = self._obs_box
+        # elif isinstance(obs_space, spaces.Discrete):
+        #     self._observation = self._obs_discrete
+        # elif isinstance(obs_space, spaces.Tuple):
+        #     self._observation = self._obs_tuple
+        # else:
+        #     raise error.UnsupportedSpace('Unsupported space %s' % obs_space).contains(action):
+        # action_space = self.env.observation_space
+        # if isinstance(action_space, spaces.Box):
+        #     self._observation = self._action_box
+        # if isinstance(action_space, spaces.Discrete):
+        #     self._action = self._action_discrete
+        # elif isinstance(action_space, spaces.Tuple):
+        #     self._action = self._action_tuple
+        # else:
+        #     raise error.UnsupportedSpace('Unsupported space %s' % obs_space).contains(action):
+        seed = rf.get_random_seed()
+        if seed:
+            self.env.seed(seed)
 
-    def _obs2vec(self, obs):
-        if self.is_cont_obs:
-            return obs[None, :]
+    def _observation(self, obs):
+        obs_space = self.env.observation_space
 
-        obs_vectorized = np.zeros(self.obs_shape, dtype='uint8')
-        if not isinstance(obs, list):
-            obs = list(obs)
+        if isinstance(obs_space, spaces.Box):
+            return np.expand_dims(obs, 0)
 
-        assert len(obs) == len(self.obs_info)
-        offset = 0
-        for feature, info in zip(obs, self.obs_info):
-            obs_vectorized[offset + feature - info['low']] = 1
-            offset += info['size']
-        return [None] + obs_vectorized
+        elif isinstance(obs_space, spaces.Discrete):
+            return np.expand_dims(self._one_hot(obs_space.n, obs), 0)
 
-    def prepare_action(self, prediction):
-        """
-        Converts raw prediction into valid _action for current environment
-        Args:
-            prediction: Raw output from predictor
+        elif isinstance(obs_space, spaces.Tuple):
+            shape = []
+            for subspace in obs_space.spaces:
+                if isinstance(subspace, spaces.Tuple):
+                    raise error.UnsupportedSpace("Nested Tuple spaces are not supported")
+                shape.append(self._observation(subspace))
+            return shape
+        else:
+            raise error.UnsupportedSpace('Unsupported space %s' % obs_space)
 
-        Returns:
-            An _action ready for plugging into environment
+    def prepare_action(self, action):
+        return self._action(action)
 
-        Examples:
-            >>> preds = model(observation)
-            >>> action = env.prepare_action(preds)
-            >>> env.step(action)
-            >>> # ...
-        """
-        if self.is_cont_action:
-            return prediction
+    def _action(self, action):
+        if self.env.action_space.contains(action):
+            return action
 
-        decoded_action = []
-        offset = 0
-        # Process cases with `Tuple<Discrete>` action spaces
-        for info in self.action_info:
-            decoded_action.append(np.argmax(prediction[offset:info['size']]))
-            offset += info['size']
-        decoded_action = decoded_action[0] if len(decoded_action) == 1 else decoded_action
+        action_space = self.env.action_space
+        if isinstance(action_space, spaces.Discrete):
+            return np.argmax(action)
 
-        assert self.env.action_space.contains(decoded_action)
-        return decoded_action
+        elif isinstance(action_space, spaces.Tuple):
+            shape = []
+            for subspace in action_space.spaces:
+                if isinstance(subspace, spaces.Tuple):
+                    raise error.UnsupportedSpace("Nested Tuple spaces are not supported")
+                shape.append(self._action(subspace))
+            return shape
+        else:
+            raise error.UnsupportedSpace('Unsupported space %s' % action_space)
 
-    def step(self, action):
-        stack_reset = self._needs_stack_reset
-        self._needs_stack_reset = False
-        reward_accum = 0
-        for _ in range(self._action_repeat):
-            obs, reward, done, info = self.env.step(action)
-            reward_accum += reward
-            if done:
-                self._needs_stack_reset = True
-                break
-        return self.preprocessor(self._obs2vec(obs), reset=stack_reset), reward_accum, done, info
+    def _step(self, action):
+        obs, reward, done, info = self.env.step(self._action(action))
+        return self._observation(obs), reward, done, info
 
-    def reset(self):
-        return self._obs2vec(self.env.reset())
-
-    def render(self, *args, **kwargs):
-        return self.env.render(*args, **kwargs)
-
-    def close(self):
-        self.env.close()
-
-    def seed(self, *args, **kwargs):
-        return self.env.seed(*args, **kwargs)
-
-    def configure(self, *args, **kwargs):
-        return self.env.configure(*args, **kwargs)
+    def _reset(self):
+        return self._observation(self.env.reset())
 
     @property
-    def action_space(self):
-        return self.env.action_space
+    def observation_shape(self):
+        return self._space_shape(self.env.observation_space)
 
     @property
-    def observation_space(self):
-        return self.env.observation_space
+    def action_shape(self):
+        return self._space_shape(self.env.action_space)
 
-    @property
-    def reward_range(self):
-        return self.env.reward_range
-
-    @property
-    def spec(self):
-        return self.env.spec
-
-    @property
-    def unwrapped(self):
-        return self.env.unwrapped
-
-    def __str__(self):
-        return 'EnvWrapper(%s)' % self.env
-
-    def __repr__(self):
-        return str(self)
+    @classmethod
+    def _one_hot(cls, shape, idx):
+        vec = np.zeros(shape, dtype=np.uint8)
+        vec[idx] = 1
+        return vec
 
     @staticmethod
-    def is_continuous(space):
+    def _is_continuous(space):
         return isinstance(space, spaces.Box)
 
     @classmethod
-    def space_info(cls, space):
-        """TODO
-        Args:
-            space:
-
-        Returns:
-            Tuple of space (high, low) values
-        """
-        if isinstance(space, spaces.Box):
-            return list(space.shape)
-        if isinstance(space, spaces.Discrete):
-            return [{'low': 0, 'high': space.n, 'size': space.n}]
-        if isinstance(space, spaces.MultiDiscrete):
-            return [{'low': low, 'high': high, 'size': high - low} for low, high in zip(space.low, space.high)]
-        if isinstance(space, spaces.Tuple):
-            length = []
-            for subspace in space.spaces:
-                if isinstance(subspace, spaces.Box):
-                    raise error.UnsupportedSpace("Nested Box spaces are not supported yet.")
-                length += cls.space_info(subspace)
-            return length
-
-    @classmethod
-    def space_shape(cls, space):
-        """TODO
-        Args:
-            space:
-
-        Returns:
-            Size of the space
-        """
+    def _space_shape(cls, space):
         if isinstance(space, spaces.Box):
             return list(space.shape)
         if isinstance(space, spaces.Discrete):
             return space.n
         if isinstance(space, spaces.MultiDiscrete):
-            return np.sum(space.high - space.low)
+            raise error.UnsupportedSpace("MultiDiscrete spaces are not supported yet.")
         if isinstance(space, spaces.Tuple):
-            length = 0
+            shape = []
             for subspace in space.spaces:
-                if isinstance(subspace, spaces.Box):
-                    raise error.UnsupportedSpace("Nested Box spaces are not supported yet.")
-                length += cls.space_info(subspace)
-            return length
+                if isinstance(space, spaces.Tuple):
+                    raise error.UnsupportedSpace("Nested Tuple spaces are not supported")
+                shape.append(cls._space_shape(subspace))
+            return shape
