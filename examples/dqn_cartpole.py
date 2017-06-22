@@ -4,7 +4,7 @@ from __future__ import division
 
 import tensorflow as tf
 import reinforceflow
-from reinforceflow.agents.dqn_agent import DQNAgent
+from reinforceflow.agents.dqn import DQNAgent
 from reinforceflow.nets import mlp
 from reinforceflow.envs import EnvFactory
 from reinforceflow.core.policy import EGreedyPolicy
@@ -13,9 +13,8 @@ reinforceflow.set_random_seed(321)
 
 
 env = EnvFactory.make('CartPole-v0')
-opt = tf.train.RMSPropOptimizer(learning_rate=0.0001)
 steps = 70000
-agent = DQNAgent(env, net_fn=mlp, opt=opt)
+agent = DQNAgent(env, net_fn=mlp, optimizer='rms', learning_rate=0.0001)
 agent.train(max_steps=steps,
             log_dir='/tmp/reinforceflow/%s/rms/' % env.spec.id[:-3],
             render=True,

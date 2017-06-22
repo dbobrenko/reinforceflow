@@ -11,7 +11,7 @@ class Policy(object):
 
 
 class GreedyPolicy(Policy):
-    def select_action(self, prediction, env):
+    def select_action(self, env, prediction):
         return env.prepare_action(prediction)
 
 
@@ -24,7 +24,7 @@ class EGreedyPolicy(Policy):
         self._anneal_range = self._start - self._final
         self.epsilon = eps_start
 
-    def select_action(self, prediction, env, step):
+    def select_action(self, env, prediction, step):
         self.epsilon = self._update_epsilon(step)
         if random.random() > self.epsilon:
             return env.prepare_action(prediction)

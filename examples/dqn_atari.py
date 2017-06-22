@@ -4,7 +4,7 @@ from __future__ import division
 
 import tensorflow as tf
 import reinforceflow
-from reinforceflow.agents.dqn_agent import DQNAgent
+from reinforceflow.agents.dqn import DQNAgent
 from reinforceflow.core import ExperienceReplay
 from reinforceflow.nets import dqn
 from reinforceflow.envs import EnvFactory
@@ -12,9 +12,9 @@ from reinforceflow.core import EGreedyPolicy
 
 reinforceflow.set_random_seed(321)
 steps = 10000000
-env = EnvFactory.make('Pong-v0')
-opt = tf.train.RMSPropOptimizer(learning_rate=0.00025, momentum=0.95, epsilon=0.01)
-agent = DQNAgent(env, net_fn=dqn, decay='poly', decay_poly_steps=steps)
+env = EnvFactory.make('Breakout-v0')
+decay_args = {'power': 1.0, 'decay_steps': steps}
+agent = DQNAgent(env, net_fn=dqn, decay='poly', decay_args=decay_args)
 agent.train(max_steps=steps,
             render=True,   # Comment/Remove this line to speed-up training
             log_dir='/tmp/reinforceflow/%s/rms_paper/' % env.spec.id[:-3],
