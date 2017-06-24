@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-import tensorflow as tf
 import reinforceflow
 from reinforceflow.agents.dqn import DQNAgent
 from reinforceflow.nets import mlp
@@ -17,7 +16,7 @@ steps = 70000
 agent = DQNAgent(env, net_fn=mlp, optimizer='rms', learning_rate=0.0001)
 agent.train(max_steps=steps,
             log_dir='/tmp/reinforceflow/%s/rms/' % env.spec.id[:-3],
-            render=True,
+            render=True,  # Comment/Remove this line to speed-up training
             target_freq=5000,
             experience=ExperienceReplay(size=5000, batch_size=32, min_size=500),
             policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=30000))

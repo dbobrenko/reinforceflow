@@ -2,9 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-import time
-import os
 from collections import defaultdict
 
 import numpy as np
@@ -13,11 +10,8 @@ import tensorflow as tf
 
 from reinforceflow import error
 from reinforceflow.envs.env_wrapper import EnvWrapper
-from reinforceflow.core import ExperienceReplay
-from reinforceflow.nets import dqn
-from reinforceflow.core import EGreedyPolicy, GreedyPolicy
+from reinforceflow.core import GreedyPolicy
 from reinforceflow import misc
-from reinforceflow import logger
 
 
 class BaseAgent(object):
@@ -56,26 +50,27 @@ class TableAgent(BaseDiscreteAgent):
 class BaseDQNAgent(BaseDiscreteAgent):
     def __init__(self,
                  env,
-                 net_fn,
                  optimizer,
-                 learning_rate=0.00025,
+                 learning_rate,
+                 net_fn,
                  optimizer_args=None,
-                 gradient_clip=40.0,
                  decay=None,
-                 decay_args=None):
+                 decay_args=None,
+                 gradient_clip=40.0,
+                 name=''):
         """Base class for Deep Q-Network agent.
 
         Args:
             env (reinforceflow.EnvWrapper): Environment wrapper.
-            net_fn: Function, that takes `input_shape` and `output_size` arguments,
-                    and returns tuple(input Tensor, output Tensor, all end point Tensors).
             optimizer: An optimizer string name or class.
             learning_rate (float or Tensor): Optimizer's learning rate.
+            net_fn: Function, that takes `input_shape` and `output_size` arguments,
+                    and returns tuple(input Tensor, output Tensor, all end point Tensors).
             optimizer_args (dict): keyword arguments, used for chosen tensorflow optimizer creation.
-            gradient_clip (float): Norm gradient clipping, to disable, pass False or None.
             decay: Learning rate decay. Should be provided decay function, or decay function name.
                    Available decays: 'polynomial', 'exponential'. To disable decay, pass None.
             decay_args (dict): keyword arguments, passed to the chosen tensorflow learning rate decay function.
+            gradient_clip (float): Norm gradient clipping, to disable, pass False or None.
 
         Attributes:
             env: Current environment
@@ -85,22 +80,24 @@ class BaseDQNAgent(BaseDiscreteAgent):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=config)
-        with tf.variable_scope('network'):
+        self.name = name
+        self._scope_prefix = '' if len(name) == 0 else name + '/'
+        with tf.variable_scope(self._scope_prefix + 'network'):
             self._action = tf.placeholder('int32', [None], name='action')
             self._reward = tf.placeholder('float32', [None], name='reward')
             self._obs, self._q, _ = net_fn(input_shape=[None] + self.env.observation_shape,
                                            output_size=self.env.action_shape)
 
-        with tf.variable_scope('target_network'):
+        with tf.variable_scope(self._scope_prefix + 'target_network'):
             self._target_obs, self._target_q, _ = net_fn(input_shape=[None] + self.env.observation_shape,
                                                          output_size=self.env.action_shape)
 
-        with tf.variable_scope('target_update'):
-            target_w = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'target_network')
-            w = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, 'network')
+        with tf.variable_scope(self._scope_prefix + 'target_update'):
+            target_w = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self._scope_prefix + 'target_network')
+            w = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self._scope_prefix + 'network')
             self._target_update = [target_w[i].assign(w[i]) for i in range(len(target_w))]
 
-        with tf.variable_scope('optimizer'):
+        with tf.variable_scope(self._scope_prefix + 'optimizer'):
             self.global_step = tf.contrib.framework.get_or_create_global_step()
             self.opt, self.lr = misc.create_optimizer(optimizer, learning_rate, optimizer_args=optimizer_args,
                                                       decay=decay, decay_args=decay_args, global_step=self.global_step)

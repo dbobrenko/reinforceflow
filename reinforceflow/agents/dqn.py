@@ -23,39 +23,38 @@ from reinforceflow import logger
 class DQNAgent(BaseDQNAgent):
     def __init__(self,
                  env,
+                 optimizer,
+                 learning_rate,
                  net_fn=dqn,
-                 optimizer='rms',
-                 learning_rate=0.00025,
                  optimizer_args=None,
-                 gradient_clip=40.0,
                  decay=None,
-                 decay_args=None):
+                 decay_args=None,
+                 gradient_clip=40.0,
+                 name=''):
         """Constructs Deep Q-Network agent, based on paper
         "Human-level control through deep reinforcement learning", Mnih et al., 2015.
         Current agent solves environments with discrete action spaces. Initially designed to work with raw pixel inputs.
 
         Args:
             env (reinforceflow.EnvWrapper): Environment wrapper.
-            net_fn: Function, that takes `input_shape` and `output_size` arguments,
-                    and returns tuple(input Tensor, output Tensor, all end point Tensors).
-            gradient_clip (float): Norm gradient clipping, to disable, pass 0 or None.
             optimizer: An optimizer string name or class.
             learning_rate (float or Tensor): Should be provided, if `opt` is optimizer class or name.
+            net_fn: Function, that takes `input_shape` and `output_size` arguments,
+                    and returns tuple(input Tensor, output Tensor, all end point Tensors).
             optimizer_args (dict): kwargs used for optimizer creation.
                                    If None, RMSProp args are applied: momentum=0.95, epsilon=0.01
             decay: Learning rate decay. Should be provided decay function, or decay function name.
                    Available decays: 'polynomial', 'exponential'. To disable decay, pass None.
             decay_args (dict): kwargs used for learning rate decay function creation.
+            gradient_clip (float): Norm gradient clipping, to disable, pass 0 or None.
 
         Attributes:
             env: Agent's running environment
             optimizer: TensorFlow optimizer
         """
-        if optimizer == 'rms':
-            optimizer_args = {'momentum': 0.95, 'epsilon': 0.01}
         super(DQNAgent, self).__init__(env=env, net_fn=net_fn, optimizer=optimizer, learning_rate=learning_rate,
                                        optimizer_args=optimizer_args, gradient_clip=gradient_clip, decay=decay,
-                                       decay_args=decay_args)
+                                       decay_args=decay_args, name=name)
         # Summaries
         self._writer = None
         for grad, w in self._grads_vars:
