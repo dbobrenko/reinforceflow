@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
+import six
 from reinforceflow.envs.env_wrapper import EnvWrapper
 from reinforceflow.envs.wrappers import AtariWrapper
 from reinforceflow import logger
@@ -24,3 +25,12 @@ class EnvFactory(object):
         else:
             logger.info('Creating environment wrapper.')
             return EnvWrapper(env)
+
+
+def make_env(env):
+    if isinstance(env, six.string_types):
+        return EnvFactory.make(env)
+    elif isinstance(env, gym.Wrapper):
+        return EnvFactory.make(env.spec.id)
+    else:
+        raise ValueError('Unknown environment type. Expected to be a string or an instance of gym.Wrapper.')

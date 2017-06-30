@@ -68,25 +68,10 @@ class DQNAgent(BaseDQNAgent):
             logger.warn('Cannot create summary for observation with shape %s' % self.env.obs_shape)
         tf.summary.histogram('agent/action', self._action_one_hot)
         tf.summary.histogram('agent/reward_per_action', self._q)
-        tf.summary.scalar('agent/learning_rate', self.lr)
+        tf.summary.scalar('agent/learning_rate', self._lr)
         tf.summary.scalar('metrics/loss', self._loss)
         self._summary_op = tf.summary.merge_all()
         # TODO print final config
-
-    def save_weights(self, path, model_name='model.ckpt'):
-        if not os.path.exists(path):
-            os.makedirs(path)
-        self._saver.save(self.sess, os.path.join(path, model_name), global_step=self.global_step)
-        logger.info('Checkpoint saved to %s' % os.path.join(path, model_name))
-
-    def load_weights(self, checkpoint):
-        if not os.path.exists(checkpoint):
-            raise ValueError('Checkpoint path/dir %s does not exists.' % checkpoint)
-        if tf.gfile.IsDirectory(checkpoint):
-            checkpoint = tf.train.latest_checkpoint(checkpoint)
-        logger.info('Restoring checkpoint from %s', checkpoint)
-        self._saver.restore(self.sess, save_path=checkpoint)
-        self.update_target()
 
     def _train(self,
                max_steps,

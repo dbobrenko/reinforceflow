@@ -24,24 +24,6 @@ class EnvWrapper(gym.Wrapper):
         super(EnvWrapper, self).__init__(env)
         self.has_multiple_action = not isinstance(env.action_space, spaces.Discrete)
         self.is_cont_action = self._is_continuous(env.action_space)
-        # obs_space = self.env.observation_space
-        # if isinstance(obs_space, spaces.Box):
-        #     self._observation = self._obs_box
-        # elif isinstance(obs_space, spaces.Discrete):
-        #     self._observation = self._obs_discrete
-        # elif isinstance(obs_space, spaces.Tuple):
-        #     self._observation = self._obs_tuple
-        # else:
-        #     raise error.UnsupportedSpace('Unsupported space %s' % obs_space).contains(action):
-        # action_space = self.env.observation_space
-        # if isinstance(action_space, spaces.Box):
-        #     self._observation = self._action_box
-        # if isinstance(action_space, spaces.Discrete):
-        #     self._action = self._action_discrete
-        # elif isinstance(action_space, spaces.Tuple):
-        #     self._action = self._action_tuple
-        # else:
-        #     raise error.UnsupportedSpace('Unsupported space %s' % obs_space).contains(action):
         seed = rf.get_random_seed()
         if seed:
             self.env.seed(seed)

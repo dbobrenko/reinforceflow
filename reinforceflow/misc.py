@@ -86,8 +86,14 @@ def create_decay(decay, learning_rate, global_step, **kwargs):
         raise ValueError('Decay should be either a decay function or a function name string.')
     return learning_rate
 
-def discount_rewards(rewards, gamma):
-    return lfilter([1], [1, -gamma], rewards[::-1])[::-1]
+
+def discount_rewards(rewards, gamma, expected_future=0.0):
+    discount_sum = expected_future
+    result = [0] * len(rewards)
+    for i in reversed(range(len(rewards))):
+        discount_sum = rewards[i] + gamma * discount_sum
+        result[i] = discount_sum
+    return result
 
 
 class IncrementalAverage(object):
