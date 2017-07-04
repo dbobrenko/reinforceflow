@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict
+import os
 
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
@@ -12,11 +13,13 @@ from reinforceflow import error
 from reinforceflow.envs.env_wrapper import EnvWrapper
 from reinforceflow.core import GreedyPolicy
 from reinforceflow import misc
+from reinforceflow import logger
 
 
 class BaseAgent(object):
     def __init__(self, env):
         if not isinstance(env, EnvWrapper):
+            logger.warn("Wrapping environment %s into EnvWrapper." % env)
             env = EnvWrapper(env)
         self.env = env
 
@@ -81,6 +84,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
         config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=config)
         self.name = name
+        self.no_op = tf.no_op()
         self._scope_prefix = '' if len(name) == 0 else name + '/'
         with tf.variable_scope(self._scope_prefix + 'network'):
             self._action = tf.placeholder('int32', [None], name='action')
@@ -93,25 +97,43 @@ class BaseDQNAgent(BaseDiscreteAgent):
                                                          output_size=self.env.action_shape)
 
         with tf.variable_scope(self._scope_prefix + 'target_update'):
-            target_w = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self._scope_prefix + 'target_network')
-            w = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self._scope_prefix + 'network')
-            self._target_update = [target_w[i].assign(w[i]) for i in range(len(target_w))]
+            self._target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                     self._scope_prefix + 'target_network')
+            self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self._scope_prefix + 'network')
+            self._target_update = [self._target_weights[i].assign(self._weights[i])
+                                   for i in range(len(self._target_weights))]
 
         with tf.variable_scope(self._scope_prefix + 'optimizer'):
             self.global_step = tf.contrib.framework.get_or_create_global_step()
-            self.opt, self.lr = misc.create_optimizer(optimizer, learning_rate, optimizer_args=optimizer_args,
-                                                      decay=decay, decay_args=decay_args, global_step=self.global_step)
+            self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate, optimizer_args=optimizer_args,
+                                                       decay=decay, decay_args=decay_args,
+                                                       global_step=self.global_step)
             self._action_one_hot = tf.one_hot(self._action, self.env.action_shape, 1.0, 0.0, name='action_one_hot')
             # Predict expected future reward for performed action
             q_value = tf.reduce_sum(tf.multiply(self._q, self._action_one_hot), axis=1)
             self._loss = tf.reduce_mean(tf.square(self._reward - q_value), name='loss')
-            grads = tf.gradients(self._loss, w)
+            self._grads = tf.gradients(self._loss, self._weights)
             if gradient_clip:
-                grads, _ = tf.clip_by_global_norm(grads, gradient_clip)
-            self._grads_vars = list(zip(grads, w))
+                self._grads, _ = tf.clip_by_global_norm(self._grads, gradient_clip)
+            self._grads_vars = list(zip(self._grads, self._weights))
             self._train_op = self.opt.apply_gradients(self._grads_vars, global_step=self.global_step)
         self._saver = tf.train.Saver(max_to_keep=10)
         self._summary_op = tf.no_op()
+
+    def save_weights(self, path, model_name='model.ckpt'):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        self._saver.save(self.sess, os.path.join(path, model_name), global_step=self.global_step)
+        logger.info('Checkpoint saved to %s' % os.path.join(path, model_name))
+
+    def load_weights(self, checkpoint):
+        if not os.path.exists(checkpoint):
+            raise ValueError('Checkpoint path/dir %s does not exists.' % checkpoint)
+        if tf.gfile.IsDirectory(checkpoint):
+            checkpoint = tf.train.latest_checkpoint(checkpoint)
+        logger.info('Restoring checkpoint from %s', checkpoint)
+        self._saver.restore(self.sess, save_path=checkpoint)
+        self.update_target()
 
     @property
     def current_step(self):
@@ -135,7 +157,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
             rewards: list with rewards for each action
             summarize: if enabled, writes summaries into TensorBoard
         """
-        _, summary = self.sess.run([self._train_op, self._summary_op if summarize else tf.no_op()], feed_dict={
+        _, summary = self.sess.run([self._train_op, self._summary_op if summarize else self.no_op], feed_dict={
                                     self._obs: obs,
                                     self._action: actions,
                                     self._reward: rewards
@@ -167,3 +189,15 @@ class BaseDQNAgent(BaseDiscreteAgent):
 
     def train(self, **kwargs):
         raise NotImplementedError
+
+    def close(self):
+        self.sess.close()
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()

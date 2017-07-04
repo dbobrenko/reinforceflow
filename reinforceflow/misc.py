@@ -3,10 +3,8 @@ from __future__ import print_function
 from __future__ import division
 
 import six
-from scipy.signal import lfilter
 import tensorflow as tf
 from tensorflow.python.framework import ops
-from reinforceflow.core import EGreedyPolicy, GreedyPolicy
 from reinforceflow import logger
 
 
@@ -87,8 +85,8 @@ def create_decay(decay, learning_rate, global_step, **kwargs):
     return learning_rate
 
 
-def discount_rewards(rewards, gamma, expected_future=0.0):
-    discount_sum = expected_future
+def discount_rewards(rewards, gamma, expected_reward=0.0):
+    discount_sum = expected_reward
     result = [0] * len(rewards)
     for i in reversed(range(len(rewards))):
         discount_sum = rewards[i] + gamma * discount_sum
@@ -100,13 +98,8 @@ class IncrementalAverage(object):
     def __init__(self):
         self._total = 0.0
         self._counter = 0
-        self.add = self.__add__
 
-    def __add__(self, other):
-        self._total += other
-        self._counter += 1
-
-    def __iadd__(self, other):
+    def add(self, other):
         self._total += other
         self._counter += 1
 
