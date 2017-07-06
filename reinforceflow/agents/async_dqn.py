@@ -21,62 +21,71 @@ from reinforceflow.envs.env_factory import make_env
 class _GlobalDQNAgent(BaseDQNAgent):
     def __init__(self,
                  env,
-                 optimizer,
-                 learning_rate,
                  net_fn,
                  log_dir,
-                 optimizer_args=None,
-                 decay=None,
-                 decay_args=None,
-                 gradient_clip=40.0,
                  name='GlobalAgent'):
-        super(_GlobalDQNAgent, self).__init__(env=env, net_fn=net_fn, optimizer=optimizer, learning_rate=learning_rate,
-                                              optimizer_args=optimizer_args, gradient_clip=gradient_clip, decay=decay,
-                                              decay_args=decay_args, name=name)
-        self._step_inc_op = self.global_step.assign_add(1, use_locking=True)
+        super(_GlobalDQNAgent, self).__init__(env=env, net_fn=net_fn, name=name)
+        self._obs_step = tf.Variable(0, trainable=False)
+        self._step_inc_op = self._obs_step.assign_add(1, use_locking=True)
         self.weights = self._weights
         self.writer = tf.summary.FileWriter(log_dir, self.sess.graph)
         self.request_stop = False
         self.sess.run(tf.global_variables_initializer())
+        self._prev_obs_step = self.obs_step
+        self._prev_opt_step = self.optimizer_step
+        self._last_time = time.time()
+
+    @property
+    def obs_step(self):
+        return self.sess.run(self._obs_step)
 
     def step_increment(self):
         return self.sess.run(self._step_inc_op)
 
-    def write_test_summary(self):
-        test_r, test_q = self.test(episodes=3)
-        step = self.current_step
-        logger.info("Testing global agent: Average R: %.2f. Average maxQ: %.2f. Step: %d." % (test_r, test_q, step))
+    def write_test_summary(self, test_episodes=3):
+        test_r, test_q = self.test(episodes=test_episodes)
+        obs_step = self.obs_step
+        obs_per_sec = (self.obs_step - self._prev_obs_step) / (time.time() - self._last_time)
+        opt_per_sec = (self.optimizer_step - self._prev_opt_step) / (time.time() - self._last_time)
+        self._last_time = time.time()
+        self._prev_obs_step = obs_step
+        self._prev_opt_step = self.optimizer_step
+        logger.info("Testing global agent: Average R: %.2f. Average maxQ: %.2f. Step: %d." % (test_r, test_q, obs_step))
         custom_values = [tf.Summary.Value(tag=self._scope_prefix + 'test_r', simple_value=test_r),
                          tf.Summary.Value(tag=self._scope_prefix + 'test_q', simple_value=test_q),
+                         tf.Summary.Value(tag='observation/sec', simple_value=obs_per_sec),
+                         tf.Summary.Value(tag='update/sec', simple_value=opt_per_sec)
                          ]
-        self.writer.add_summary(tf.Summary(value=custom_values), global_step=step)
+        self.writer.add_summary(tf.Summary(value=custom_values), global_step=obs_step)
+
+    def train_on_batch(self, obs, actions, rewards, summarize=False):
+        raise NotImplementedError('For training Async DQN, use AsyncDQNTrainer instead.')
 
     def _train(self, **kwargs):
-        raise NotImplementedError
+        raise NotImplementedError('For training Async DQN, use AsyncDQNTrainer instead.')
 
     def train(self, **kwargs):
-        raise NotImplementedError
+        raise NotImplementedError('For training Async DQN, use AsyncDQNTrainer instead.')
 
 
 class _ThreadDQNAgent(BaseDQNAgent):
     def __init__(self,
                  env,
-                 optimizer,
-                 learning_rate,
                  net_fn,
                  global_agent,
-                 optimizer_args=None,
-                 decay=None,
-                 decay_args=None,
-                 gradient_clip=40.0,
                  name=''):
-        super(_ThreadDQNAgent, self).__init__(env=env, net_fn=net_fn, optimizer=optimizer, learning_rate=learning_rate,
-                                              optimizer_args=optimizer_args, gradient_clip=gradient_clip, decay=decay,
-                                              decay_args=decay_args, name=name)
-        self._grads_vars = list(zip(self._grads, global_agent.weights))
-        self._train_op = global_agent.opt.apply_gradients(self._grads_vars)
+        super(_ThreadDQNAgent, self).__init__(env=env, net_fn=net_fn, name=name)
+        self.sess.close()
+        self.sess = global_agent.sess
         self._sync_op = [self._weights[i].assign(global_agent.weights[i]) for i in range(len(self._weights))]
         self.global_agent = global_agent
+
+    def prepare_train(self, optimizer, learning_rate, optimizer_args=None,
+                      decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+        super(_ThreadDQNAgent, self).prepare_train(optimizer, learning_rate, optimizer_args, decay, decay_args,
+                                                   gradient_clip, saver_keep)
+        self._grads_vars = list(zip(self._grads, self.global_agent.weights))
+        self._train_op = self.global_agent.opt.apply_gradients(self._grads_vars)
         with tf.variable_scope(self._scope_prefix):
             for grad, w in self._grads_vars:
                 tf.summary.histogram(w.name, w)
@@ -102,20 +111,27 @@ class _ThreadDQNAgent(BaseDQNAgent):
         pass
 
     def train(self,
-              max_steps,
-              target_freq=10000,
+              steps,
+              optimizer,
+              learning_rate,
+              target_freq,
+              policy,
+              log_freq,
+              optimizer_args=None,
+              decay=None,
+              decay_args=None,
+              gradient_clip=40.0,
               gamma=0.99,
-              policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=1000000),
-              log_freq=10000,
-              batch_size=32):
+              batch_size=32,
+              saver_keep=10):
+        if not self._ready_for_train:
+            self.prepare_train(optimizer, learning_rate, optimizer_args, decay, decay_args, gradient_clip, saver_keep)
         ep_reward = misc.IncrementalAverage()
         ep_q = misc.IncrementalAverage()
         reward_accum = 0
         last_log_step = 0
         episode = 0
         obs = self.env.reset()
-        last_time = time.time()
-        prev_log_step = self.global_agent.current_step
         term = True
         while not self.global_agent.request_stop:
             self._synchronize()
@@ -136,28 +152,25 @@ class _ThreadDQNAgent(BaseDQNAgent):
             expected_reward = 0
             if not term:
                 # TODO: Clip expected reward?
-                expected_reward = np.max(self.global_agent.predict_target(obs))
+                expected_reward = np.max(self.global_agent.target_predict(obs))
                 ep_q.add(expected_reward)
             else:
                 ep_reward.add(reward_accum)
                 reward_accum = 0
             batch_rewards = discount_rewards(batch_rewards, gamma, expected_reward)
-            summarize = term and log_freq and self.global_agent.current_step - last_log_step > log_freq
-            summary_str = self.train_on_batch(np.vstack(batch_obs), batch_actions, batch_rewards, summarize)
+            summarize = term and log_freq and self.global_agent.obs_step - last_log_step > log_freq
+            summary_str = self._train_on_batch(np.vstack(batch_obs), batch_actions, batch_rewards, summarize)
             if summarize:
-                last_log_step = self.global_agent.current_step
+                last_log_step = self.global_agent.obs_step
                 train_r = ep_reward.reset()
                 train_q = ep_q.reset()
                 logger.info("%s - Train results: Average R: %.2f. Average maxQ: %.2f. Step: %d. Ep: %d"
                             % (self._scope_prefix, train_r, train_q, last_log_step, episode))
                 if summary_str:
-                    step_per_sec = (last_log_step - prev_log_step) / (time.time() - last_time)
-                    last_time = time.time()
-                    prev_log_step = last_log_step
                     custom_values = [tf.Summary.Value(tag=self._scope_prefix + 'train_r', simple_value=train_r),
                                      tf.Summary.Value(tag=self._scope_prefix + 'train_q', simple_value=train_q),
                                      tf.Summary.Value(tag=self._scope_prefix + 'epsilon', simple_value=policy.epsilon),
-                                     tf.Summary.Value(tag=self._scope_prefix + 'step/sec', simple_value=step_per_sec)
+                                     tf.Summary.Value(tag=self._scope_prefix + 'episodes', simple_value=episode)
                                      ]
                     self.global_agent.writer.add_summary(tf.Summary(value=custom_values), global_step=last_log_step)
                     self.global_agent.writer.add_summary(summary_str, global_step=last_log_step)
@@ -181,30 +194,23 @@ class AsyncDQNTrainer(object):
               gradient_clip=40.0,
               decay=None,
               decay_args=None,
-              epsilon_pool=None,
+              epsilon_pool=(0.1, 0.1, 0.1, 0.1, 0.01, 0.01, 0.01, 0.5, 0.5, 0.5),
               ckpt_dir=None,
               gamma=0.99,
               batch_size=32,
-              render=False):
+              render=False,
+              saver_keep=10):
         if num_threads < 1:
             raise ValueError("Number of threads must be >= 1. Got: %s." % num_threads)
         threads = []
         envs = []
-        if epsilon_pool is None:
-            epsilon_pool = 4*[0.1] + 3*[0.01] + 3*[0.5]
         if not isinstance(epsilon_pool, (list, tuple, np.ndarray)):
             epsilon_pool = list(epsilon_pool)
         global_agent = _GlobalDQNAgent(env=make_env(self.env),
-                                       optimizer=optimizer,
-                                       learning_rate=learning_rate,
                                        net_fn=self.net_fn,
-                                       optimizer_args=optimizer_args,
-                                       decay=decay,
-                                       decay_args=decay_args,
-                                       gradient_clip=gradient_clip,
                                        log_dir=log_dir,
                                        name='GlobalAgent')
-        if ckpt_dir:
+        if ckpt_dir and tf.train.latest_checkpoint(log_dir) is not None:
             global_agent.load_weights(ckpt_dir)
         for t in range(num_threads):
             eps_min = random.choice(epsilon_pool)
@@ -213,19 +219,15 @@ class AsyncDQNTrainer(object):
             env = make_env(self.env)
             envs.append(env)
             agent = _ThreadDQNAgent(env=env,
-                                    optimizer=optimizer,
-                                    learning_rate=learning_rate,
                                     net_fn=self.net_fn,
-                                    optimizer_args=optimizer_args,
-                                    decay=decay,
-                                    decay_args=decay_args,
-                                    gradient_clip=gradient_clip,
                                     global_agent=global_agent,
                                     name='ThreadAgent%d' % t)
             thread = threading.Thread(target=agent.train,
-                                      args=(steps, target_freq, gamma, policy, log_freq, batch_size))
+                                      args=(steps, optimizer, learning_rate, target_freq, policy, log_freq,
+                                            optimizer_args, decay, decay_args, gradient_clip, gamma, batch_size,
+                                            saver_keep))
             threads.append(thread)
-        last_log_step = global_agent.current_step
+        last_log_step = global_agent.obs_step
         last_target_update = last_log_step
         for t in threads:
             t.daemon = True
@@ -235,12 +237,12 @@ class AsyncDQNTrainer(object):
         def has_live_threads():
             return True in [th.isAlive() for th in threads]
 
-        while has_live_threads() and global_agent.current_step < steps:
+        while has_live_threads() and global_agent.obs_step < steps:
             try:
                 if render:
                     for env in envs:
                         env.render()
-                step = global_agent.current_step
+                step = global_agent.obs_step
                 if step - last_log_step >= log_freq:
                     last_log_step = step
                     global_agent.write_test_summary()
@@ -248,7 +250,7 @@ class AsyncDQNTrainer(object):
 
                 if step - last_target_update >= target_freq:
                     last_target_update = step
-                    global_agent.update_target()
+                    global_agent.target_update()
                 [t.join(1) for t in threads if t is not None and t.isAlive()]
                 time.sleep(.01)
             except KeyboardInterrupt:

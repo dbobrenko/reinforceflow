@@ -2,9 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-import sys
 import time
-import os
 
 from six.moves import range  # pylint: disable=redefined-builtin
 import numpy as np
@@ -16,47 +14,33 @@ from reinforceflow.nets import dqn
 from reinforceflow.core import EGreedyPolicy
 from reinforceflow import misc
 from reinforceflow import logger
-# TODO: Test & write unittests
-# TODO: Add comments & documentation
 
 
 class DQNAgent(BaseDQNAgent):
     def __init__(self,
                  env,
-                 optimizer,
-                 learning_rate,
                  net_fn=dqn,
-                 optimizer_args=None,
-                 decay=None,
-                 decay_args=None,
-                 gradient_clip=40.0,
                  name=''):
         """Constructs Deep Q-Network agent, based on paper
         "Human-level control through deep reinforcement learning", Mnih et al., 2015.
-        Current agent solves environments with discrete action spaces. Initially designed to work with raw pixel inputs.
 
         Args:
             env (reinforceflow.EnvWrapper): Environment wrapper.
-            optimizer: An optimizer string name or class.
-            learning_rate (float or Tensor): Should be provided, if `opt` is optimizer class or name.
-            net_fn: Function, that takes `input_shape` and `output_size` arguments,
-                    and returns tuple(input Tensor, output Tensor, all end point Tensors).
-            optimizer_args (dict): kwargs used for optimizer creation.
-                                   If None, RMSProp args are applied: momentum=0.95, epsilon=0.01
-            decay: Learning rate decay. Should be provided decay function, or decay function name.
-                   Available decays: 'polynomial', 'exponential'. To disable decay, pass None.
-            decay_args (dict): kwargs used for learning rate decay function creation.
-            gradient_clip (float): Norm gradient clipping, to disable, pass 0 or None.
+            net_fn: (function) Takes `input_shape` and `output_size` arguments,
+                    returns tuple(input Tensor, output Tensor, all end point Tensors).
 
         Attributes:
-            env: Agent's running environment
-            optimizer: TensorFlow optimizer
+            env: Current environment.
+            net_fn: Function, used for building network model.
+            name: Agent's name prefix.
         """
-        super(DQNAgent, self).__init__(env=env, net_fn=net_fn, optimizer=optimizer, learning_rate=learning_rate,
-                                       optimizer_args=optimizer_args, gradient_clip=gradient_clip, decay=decay,
-                                       decay_args=decay_args, name=name)
-        # Summaries
+        super(DQNAgent, self).__init__(env=env, net_fn=net_fn, name=name)
         self._writer = None
+
+    def prepare_train(self, optimizer, learning_rate, optimizer_args=None,
+                      decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+        super(DQNAgent, self).prepare_train(optimizer, learning_rate, optimizer_args, decay, decay_args, gradient_clip,
+                                            saver_keep)
         for grad, w in self._grads_vars:
             tf.summary.histogram(w.name, w)
             tf.summary.histogram(w.name + '/gradients', grad)
@@ -71,7 +55,6 @@ class DQNAgent(BaseDQNAgent):
         tf.summary.scalar('agent/learning_rate', self._lr)
         tf.summary.scalar('metrics/loss', self._loss)
         self._summary_op = tf.summary.merge_all()
-        # TODO print final config
 
     def _train(self,
                max_steps,
@@ -79,11 +62,10 @@ class DQNAgent(BaseDQNAgent):
                render,
                target_freq,
                gamma,
-               checkpoint,
                experience,
                policy,
                log_freq,
-               checkpoint_freq):
+               ckpt_freq):
         ep_reward = misc.IncrementalAverage()
         ep_q = misc.IncrementalAverage()
         reward_accum = 0
@@ -91,13 +73,13 @@ class DQNAgent(BaseDQNAgent):
         episode = 0
         self.sess.run(tf.global_variables_initializer())
         self._writer = tf.summary.FileWriter(log_dir, self.sess.graph)
-        if checkpoint:
-            self.load_weights(checkpoint)
+        if log_dir and tf.train.latest_checkpoint(log_dir) is not None:
+            self.load_weights(log_dir)
         obs = self.env.reset()
         last_time = time.time()
-        last_step = self.current_step
+        last_step = self.optimizer_step
         for _ in range(max_steps):
-            step = self.current_step
+            step = self.optimizer_step
             if render:
                 self.env.render()
             reward_per_action = self.predict(obs)
@@ -119,17 +101,17 @@ class DQNAgent(BaseDQNAgent):
                     tr_action.append(transition['action'])
                     td_target = transition['reward']
                     if not transition['term']:
-                        q = np.max(self.predict_target(transition['obs_next']).flatten())
+                        q = np.max(self.target_predict(transition['obs_next']).flatten())
                         td_target += gamma * q
                         ep_q.add(q)
                     tr_reward.append(td_target)
                 summarize = term and log_freq and step - last_log_step > log_freq
-                summary_str = self.train_on_batch(np.vstack(tr_obs), tr_action, tr_reward, summarize)
+                summary_str = self._train_on_batch(np.vstack(tr_obs), tr_action, tr_reward, summarize)
 
                 if step % target_freq == target_freq-1:
-                    self.update_target()
+                    self.target_update()
 
-                if log_dir and step % checkpoint_freq == checkpoint_freq-1:
+                if log_dir and step % ckpt_freq == ckpt_freq-1:
                     self.save_weights(log_dir)
 
                 # Eval & log
@@ -162,24 +144,50 @@ class DQNAgent(BaseDQNAgent):
                 obs = self.env.reset()
 
     def train(self,
-              log_dir,
               max_steps,
+              optimizer,
+              learning_rate,
+              log_dir,
+              experience=ExperienceReplay(size=20000, min_size=5000, batch_size=32),
+              policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=20000),
+              optimizer_args=None,
+              decay=None,
+              decay_args=None,
+              gradient_clip=40.0,
               render=False,
-              target_freq=10000,
               gamma=0.99,
-              checkpoint=None,
-              experience=ExperienceReplay(size=1000000, min_size=50000, batch_size=32),
-              policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=1000000),
+              target_freq=10000,
               log_freq=100,
-              checkpoint_freq=20000):
+              ckpt_freq=20000,
+              saver_keep=10):
+        """Starts training process.
+
+        Args:
+            max_steps: number of training steps (optimizer steps).
+            optimizer: An optimizer string name or class.
+            learning_rate (float or Tensor): Should be provided, if `opt` is optimizer class or name.
+            log_dir: (str) directory for summary and checkpoints. Continues training, if checkpoint already exists.
+            experience: (reinforceflow.core.ExperienceReplay) Experience buffer.
+            policy: (reinforceflow.core.Policy) Agent's training policy.
+            optimizer_args (dict): Keyword arguments, used for optimizer creation.
+            decay: Learning rate decay. Expects tensorflow decay function or function name string.
+                   Available name strings: 'polynomial', 'exponential'. To disable, pass None.
+            decay_args (dict): Keyword arguments used for learning rate decay function creation.
+            gradient_clip (float): Norm gradient clipping, to disable, pass 0 or None.
+            render: (bool) Enables game screen rendering.
+            gamma (float): Reward discount factor.
+            target_freq (int): Target network update frequency (in update steps).
+            log_freq (int): Log and summary frequency (in update steps).
+            ckpt_freq (int): Checkpoint saving frequency (in update steps).
+            saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir` (overwrites, when exceeds).
+        """
+        if not self._ready_for_train:
+            self.prepare_train(optimizer, learning_rate, optimizer_args, decay, decay_args, gradient_clip, saver_keep)
         try:
-            self._train(max_steps, log_dir, render, target_freq, gamma, checkpoint, experience, policy, log_freq,
-                        checkpoint_freq)
+            self._train(max_steps, log_dir, render, target_freq, gamma, experience, policy, log_freq,
+                        ckpt_freq)
             logger.info('Training finished.')
         except KeyboardInterrupt:
             logger.info('Stopping training process...')
-            if log_dir:
-                self.save_weights(log_dir)
-            sys.exit(0)
         if log_dir:
             self.save_weights(log_dir)

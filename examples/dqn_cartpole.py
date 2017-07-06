@@ -13,8 +13,11 @@ reinforceflow.set_random_seed(321)
 
 env = EnvFactory.make('CartPole-v0')
 steps = 70000
-agent = DQNAgent(env, net_fn=mlp, optimizer='rms', learning_rate=0.0001)
+agent = DQNAgent(env, net_fn=mlp)
+
 agent.train(max_steps=steps,
+            optimizer = 'rms',
+            learning_rate = 0.0001,
             log_dir='/tmp/reinforceflow/%s/rms/' % env.spec.id[:-3],
             render=True,  # Comment/Remove this line to speed-up training
             target_freq=5000,
