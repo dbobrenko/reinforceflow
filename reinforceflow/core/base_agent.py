@@ -2,8 +2,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import defaultdict
 import os
+from collections import defaultdict
+from abc import ABCMeta, abstractmethod
 
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
@@ -18,6 +19,7 @@ from reinforceflow import logger
 
 class BaseAgent(object):
     def __init__(self, env):
+        super(BaseAgent, self).__init__()
         if not isinstance(env, EnvWrapper):
             logger.warn("Wrapping environment %s into EnvWrapper." % env)
             env = EnvWrapper(env)
@@ -32,11 +34,11 @@ class BaseDiscreteAgent(BaseAgent):
     def __init__(self, env):
         super(BaseDiscreteAgent, self).__init__(env)
         if self.env.is_cont_action:
-            raise error.UnsupportedSpace('%s does not support environments with continuous action space.'
-                                         % self.__class__.__name__)
+            raise error.UnsupportedSpace('%s does not support environments with continuous '
+                                         'action space.' % self.__class__.__name__)
         if self.env.has_multiple_action:
-            raise error.UnsupportedSpace('%s does not support environments with multiple action spaces.'
-                                         % self.__class__.__name__)
+            raise error.UnsupportedSpace('%s does not support environments with multiple '
+                                         'action spaces.' % self.__class__.__name__)
         self.env = env
 
 
@@ -45,14 +47,17 @@ class TableAgent(BaseDiscreteAgent):
     def __init__(self, env):
         super(TableAgent, self).__init__(env)
         if self.env.is_cont_obs:
-            raise error.UnsupportedSpace('%s does not support environments with continuous observation space.'
-                                         % self.__class__.__name__)
+            raise error.UnsupportedSpace('%s does not support environments with continuous '
+                                         'observation space.' % self.__class__.__name__)
         self.q_table = defaultdict(lambda: np.zeros(self.env.action_shape))
 
 
 class BaseDQNAgent(BaseDiscreteAgent):
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
     def __init__(self, env, net_fn, name=''):
-        """Base class for Deep Q-Network agent.
+        """Abstract base class for Deep Q-Network agent.
 
         Args:
             env (reinforceflow.EnvWrapper): Environment wrapper.
@@ -65,24 +70,25 @@ class BaseDQNAgent(BaseDiscreteAgent):
             name: Agent's name prefix.
         """
         super(BaseDQNAgent, self).__init__(env=env)
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        self.sess = tf.Session(config=config)
         self.net_fn = net_fn
-        self.name = name
+        self._scope = name
         self.no_op = tf.no_op()
-        self._scope_prefix = '' if len(name) == 0 else name + '/'
-        with tf.variable_scope(self._scope_prefix + 'network'):
+        self._scope = '' if len(name) == 0 else name + '/'
+        with tf.variable_scope(self._scope + 'network'):
             self._action = tf.placeholder('int32', [None], name='action')
             self._reward = tf.placeholder('float32', [None], name='reward')
             self._obs, self._q, _ = self.net_fn(input_shape=[None] + self.env.observation_shape,
                                                 output_size=self.env.action_shape)
-            self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self._scope_prefix + 'network')
+            self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                              self._scope + 'network')
+        self.global_step = tf.Variable(0, trainable=False, name='global_step')
+        self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
+        self._obs_counter_inc = self._obs_counter.assign_add(1, use_locking=True)
+        self.sess = None
         self._target_obs = None
         self._target_q = None
         self._target_weights = None
         self._target_update = None
-        self.global_step = None
         self.opt = None
         self._lr = None
         self._action_one_hot = None
@@ -94,36 +100,46 @@ class BaseDQNAgent(BaseDiscreteAgent):
         self._summary_op = None
         self._ready_for_train = False
 
-    def prepare_train(self, optimizer, learning_rate, optimizer_args=None,
-                      decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+    def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
+                          decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
         """Prepares agent for training.
 
         Args:
             optimizer: An optimizer name string or class.
-            learning_rate (float or Tensor): Optimizer's learning rate.
+            learning_rate: (float or Tensor) Optimizer's learning rate.
             optimizer_args (dict): Keyword arguments used for optimizer creation.
-            decay: (function) Learning rate decay. Expects tensorflow decay function or function name string.
-                   Available name strings: 'polynomial', 'exponential'. To disable, pass None.
-            decay_args (dict): Keyword arguments, passed to the decay function.
-            gradient_clip (float): Norm gradient clipping. To disable, pass False or None.
-            saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir` (overwrites, when exceeds).
+            decay: (function) Learning rate decay.
+                   Expects tensorflow decay function or function name string.
+                   Available name strings: 'polynomial', 'exponential'.
+                   To disable, pass None.
+            decay_args: (dict) Keyword arguments, passed to the decay function.
+            gradient_clip: (float) Norm gradient clipping.
+                                   To disable, pass False or None.
+            saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
+                        When exceeds, overwrites the most earliest checkpoints.
         """
-        with tf.variable_scope(self._scope_prefix + 'target_network'):
-            self._target_obs, self._target_q, _ = self.net_fn(input_shape=[None] + self.env.observation_shape,
-                                                              output_size=self.env.action_shape)
+        if self._ready_for_train:
+            logger.warn("The training graph has already been built.")
+            return
 
-        with tf.variable_scope(self._scope_prefix + 'target_update'):
+        with tf.variable_scope(self._scope + 'target_network'):
+            self._target_obs, self._target_q, _ = \
+                self.net_fn(input_shape=[None] + self.env.observation_shape,
+                            output_size=self.env.action_shape)
+
+        with tf.variable_scope(self._scope + 'target_update'):
             self._target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                     self._scope_prefix + 'target_network')
+                                                     self._scope + 'target_network')
             self._target_update = [self._target_weights[i].assign(self._weights[i])
                                    for i in range(len(self._target_weights))]
 
-        with tf.variable_scope(self._scope_prefix + 'optimizer'):
-            self.global_step = tf.contrib.framework.get_or_create_global_step()
-            self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate, optimizer_args=optimizer_args,
+        with tf.variable_scope(self._scope + 'optimizer'):
+            self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate,
+                                                       optimizer_args=optimizer_args,
                                                        decay=decay, decay_args=decay_args,
                                                        global_step=self.global_step)
-            self._action_one_hot = tf.one_hot(self._action, self.env.action_shape, 1.0, 0.0, name='action_one_hot')
+            self._action_one_hot = tf.one_hot(self._action, self.env.action_shape, 1.0, 0.0,
+                                              name='action_one_hot')
             # Predict expected future reward for performed action
             q_value = tf.reduce_sum(tf.multiply(self._q, self._action_one_hot), axis=1)
             self._loss = tf.reduce_mean(tf.square(self._reward - q_value), name='loss')
@@ -131,7 +147,8 @@ class BaseDQNAgent(BaseDiscreteAgent):
             if gradient_clip:
                 self._grads, _ = tf.clip_by_global_norm(self._grads, gradient_clip)
             self._grads_vars = list(zip(self._grads, self._weights))
-            self._train_op = self.opt.apply_gradients(self._grads_vars, global_step=self.global_step)
+            self._train_op = self.opt.apply_gradients(self._grads_vars,
+                                                      global_step=self.global_step)
         self._saver = tf.train.Saver(max_to_keep=saver_keep)
         self._summary_op = tf.no_op()
         self._ready_for_train = True
@@ -140,19 +157,26 @@ class BaseDQNAgent(BaseDiscreteAgent):
         if not os.path.exists(path):
             os.makedirs(path)
         self._saver.save(self.sess, os.path.join(path, model_name), global_step=self.global_step)
-        logger.info('Checkpoint saved to %s' % os.path.join(path, model_name))
+        logger.info('Checkpoint has been saved to: %s' % os.path.join(path, model_name))
 
     def load_weights(self, checkpoint):
         if not os.path.exists(checkpoint):
             raise ValueError('Checkpoint path/dir %s does not exists.' % checkpoint)
         if tf.gfile.IsDirectory(checkpoint):
             checkpoint = tf.train.latest_checkpoint(checkpoint)
-        logger.info('Restoring checkpoint from %s', checkpoint)
         self._saver.restore(self.sess, save_path=checkpoint)
         self.target_update()
+        logger.info('Checkpoint has been restored from: %s', checkpoint)
+
+    def increment_obs_counter(self):
+        return self.sess.run(self._obs_counter_inc)
 
     @property
-    def optimizer_step(self):
+    def obs_counter(self):
+        return self.sess.run(self._obs_counter_inc)
+
+    @property
+    def step_counter(self):
         return self.sess.run(self.global_step)
 
     def predict(self, obs):
@@ -174,16 +198,18 @@ class BaseDQNAgent(BaseDiscreteAgent):
             summarize: (bool) Enables TensorBoard summary writing.
         """
         if not self._ready_for_train:
-            raise ValueError('Consider calling `prepare_train` before starting training process.')
+            raise ValueError('Consider calling `build_train_graph` '
+                             'before starting training process.')
 
         return self._train_on_batch(obs, actions, rewards, summarize)
 
     def _train_on_batch(self, obs, actions, rewards, summarize=False):
-        _, summary = self.sess.run([self._train_op, self._summary_op if summarize else self.no_op], feed_dict={
-                                    self._obs: obs,
-                                    self._action: actions,
-                                    self._reward: rewards
-                                    })
+        _, summary = self.sess.run([self._train_op, self._summary_op if summarize else self.no_op],
+                                   feed_dict={
+                                        self._obs: obs,
+                                        self._action: actions,
+                                        self._reward: rewards
+                                        })
         return summary
 
     def test(self, episodes, policy=GreedyPolicy(), max_ep_steps=int(1e5), render=False):
@@ -195,7 +221,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
             max_ep_steps: (int) Maximum allowed steps per episode.
             render: (bool) Enables game screen rendering.
 
-        Returns: (tuple) average reward per episode, average max. Q value per episode.
+        Returns: (tuple) Average reward per episode, average max. Q value per episode.
         """
         ep_rewards = misc.IncrementalAverage()
         ep_q = misc.IncrementalAverage()
@@ -222,7 +248,8 @@ class BaseDQNAgent(BaseDiscreteAgent):
         raise NotImplementedError
 
     def close(self):
-        self.sess.close()
+        if self.sess:
+            self.sess.close()
 
     def __del__(self):
         self.close()

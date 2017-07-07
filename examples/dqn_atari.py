@@ -18,12 +18,12 @@ decay_args = {'power': 1.0, 'decay_steps': steps}
 agent = DQNAgent(env, net_fn=dqn)
 
 agent.train(max_steps=steps,
+            render=False,
             optimizer='rms',
             learning_rate=0.00025,
             optimizer_args=optimizer_args,
             decay='poly',
             decay_args=decay_args,
-            render=True,  # Comment/Remove this line to speed-up training
             log_dir='/tmp/reinforceflow/%s/rms_paper/' % env.spec.id[:-3],
             policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=1000000),
             experience=ExperienceReplay(size=1000000, min_size=50000, batch_size=32))

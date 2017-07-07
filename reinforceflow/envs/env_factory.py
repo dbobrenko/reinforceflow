@@ -12,10 +12,11 @@ from reinforceflow import logger
 class EnvFactory(object):
     @staticmethod
     def make(env, action_repeat=4, random_start=0):
+        # TODO: add random_start functionality
         if isinstance(env, str):
             env = gym.make(env)
         if hasattr(env.env, 'ale'):
-            logger.info('Creating wrapper around Atari environment.')
+            logger.debug('Creating wrapper around Atari environment.')
             return AtariWrapper(stack_len=4,
                                 height=84,
                                 width=84,
