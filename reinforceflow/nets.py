@@ -11,7 +11,7 @@ def dqn(input_shape, output_size, trainable=True):
     output_size = np.ravel(output_size)
     if len(output_size) != 1:
         raise ValueError('Output size must be scalar or rank 1 nd.array.')
-    output_size = output_size[0]
+    output_size = int(output_size[0])
     end_points = {}
     inputs = tf.placeholder('float32', shape=input_shape, name='inputs')
     end_points['inputs'] = inputs
@@ -27,8 +27,8 @@ def dqn(input_shape, output_size, trainable=True):
     net = layers.conv2d(inputs=net,
                         num_outputs=64,
                         kernel_size=[4, 4],
-                        strides=[2, 2],
-                        activation=tf.nn.relu,
+                        stride=[2, 2],
+                        activation_fn=tf.nn.relu,
                         padding="same",
                         scope="conv2",
                         trainable=trainable)
