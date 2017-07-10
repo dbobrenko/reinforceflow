@@ -30,21 +30,25 @@ _DECAY_MAP = {
 }
 
 
-def create_optimizer(opt, learning_rate, optimizer_args=None, decay=None, decay_args=None, global_step=None):
+def create_optimizer(opt, learning_rate, optimizer_args=None, decay=None,
+                     decay_args=None, global_step=None):
     if optimizer_args is None:
         optimizer_args = {}
     # Process learning rate
     if isinstance(learning_rate, ops.Tensor) and learning_rate.get_shape().ndims == 0:
         if decay:
             logger.warn("Passed learning rate is already of type Tensor. "
-                        "Leaving optimizer original learning rate Tensor (%s) unchanged." % learning_rate)
+                        "Leaving optimizer original learning rate Tensor (%s) unchanged."
+                        % learning_rate)
     elif isinstance(learning_rate, (float, int)):
         if learning_rate < 0.0:
             raise ValueError("Learning rate must be >= 0. Got: %s.", learning_rate)
-        learning_rate = ops.convert_to_tensor(learning_rate, dtype=tf.float32, name="learning_rate")
+        learning_rate = ops.convert_to_tensor(learning_rate,dtype=tf.float32,
+                                              name="learning_rate")
         if decay:
             if global_step is None:
-                raise ValueError('Global step must be specified, in order to use learning rate decay.')
+                raise ValueError('Global step must be specified, '
+                                 'in order to use learning rate decay.')
             if decay_args is None:
                 decay_args = {}
             learning_rate = create_decay(decay, learning_rate, global_step, **decay_args)
@@ -58,11 +62,13 @@ def create_optimizer(opt, learning_rate, optimizer_args=None, decay=None, decay_
     elif isinstance(opt, six.string_types):
         opt = opt.lower()
         if opt not in _OPTIMIZER_MAP:
-            raise ValueError("Unknown optimizer name %s. Available: %s." % (opt, ', '.join(_OPTIMIZER_MAP)))
+            raise ValueError("Unknown optimizer name %s. Available: %s."
+                             % (opt, ', '.join(_OPTIMIZER_MAP)))
         return _OPTIMIZER_MAP[opt](learning_rate=learning_rate, **optimizer_args), learning_rate
     else:
-        raise ValueError("Unknown optimizer %s. Should be either a class name string, subclass of Optimizer "
-                         "or any callable object with `learning_rate` argument." % str(opt))
+        raise ValueError("Unknown optimizer %s. Should be either a class name string,"
+                         "subclass of Optimizer or any callable object"
+                         "with `learning_rate` argument." % str(opt))
 
 
 def create_decay(decay, learning_rate, global_step, **kwargs):
@@ -79,7 +85,8 @@ def create_decay(decay, learning_rate, global_step, **kwargs):
         elif decay in ['exponential_decay', 'exponential', 'exp']:
             learning_rate = tf.train.exponential_decay(learning_rate, global_step, **kwargs)
         else:
-            raise ValueError('Unknown decay function %s. Available: %s' % (decay, ', '.join(_DECAY_MAP)))
+            raise ValueError('Unknown decay function %s. Available: %s'
+                             % (decay, ', '.join(_DECAY_MAP)))
     else:
         raise ValueError('Decay should be either a decay function or a function name string.')
     return learning_rate
