@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
 import gym
 from gym import spaces
 import numpy as np
@@ -10,22 +11,24 @@ from reinforceflow import error
 
 
 class EnvWrapper(gym.Wrapper):
-    """Light wrapper around `gym.core.Env`.
-    Does basic preprocessings to simplify integration with algorithms.
+    """Light wrapper around `gym.Wrapper` environments.
 
     Args:
-        env (gym.core.Env): TODO
+        env: Environment's name string or Gym environment instance.
 
     Attributes:
-        env (gym.core.Env): TODO
-        is_cont_action (bool): TODO
+        env: Environment instance.
+        has_multiple_action: True, if env has multi discrete action space.
+        is_cont_action: True, if env has multi continious action space.
     """
     def __init__(self, env):
+        if isinstance(env, six.string_types):
+            env = gym.make(env)
         super(EnvWrapper, self).__init__(env)
         self.has_multiple_action = not isinstance(env.action_space, spaces.Discrete)
         self.is_cont_action = self._is_continuous(env.action_space)
         seed = rf.get_random_seed()
-        if seed:
+        if seed and hasattr(self.env, 'seed'):
             self.env.seed(seed)
 
     def _observation(self, obs):

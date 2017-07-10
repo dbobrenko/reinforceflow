@@ -18,6 +18,9 @@ from reinforceflow import logger
 
 
 class BaseAgent(object):
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
     def __init__(self, env):
         super(BaseAgent, self).__init__()
         if not isinstance(env, EnvWrapper):
@@ -31,6 +34,9 @@ class BaseAgent(object):
 
 class BaseDiscreteAgent(BaseAgent):
     """Base class for Agent with discrete action space."""
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
     def __init__(self, env):
         super(BaseDiscreteAgent, self).__init__(env)
         if self.env.is_cont_action:
@@ -39,11 +45,13 @@ class BaseDiscreteAgent(BaseAgent):
         if self.env.has_multiple_action:
             raise error.UnsupportedSpace('%s does not support environments with multiple '
                                          'action spaces.' % self.__class__.__name__)
-        self.env = env
 
 
 class TableAgent(BaseDiscreteAgent):
     """Base class for Table-based Agent with discrete observation and action space."""
+    __metaclass__ = ABCMeta
+
+    @abstractmethod
     def __init__(self, env):
         super(TableAgent, self).__init__(env)
         if self.env.is_cont_obs:
@@ -61,7 +69,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
 
         Args:
             env (reinforceflow.EnvWrapper): Environment wrapper.
-            net_fn: (function) Takes `input_shape` and `output_size` arguments,
+            net_fn: Function, takes `input_shape` and `output_size` arguments,
                     returns tuple(input Tensor, output Tensor, all end point Tensors).
 
         Attributes:
@@ -71,69 +79,77 @@ class BaseDQNAgent(BaseDiscreteAgent):
         """
         super(BaseDQNAgent, self).__init__(env=env)
         self.net_fn = net_fn
-        self._scope = name
+        self._scope = '' if not name else name + '/'
         self.no_op = tf.no_op()
-        self._scope = '' if len(name) == 0 else name + '/'
-        with tf.variable_scope(self._scope + 'network'):
-            self._action = tf.placeholder('int32', [None], name='action')
-            self._reward = tf.placeholder('float32', [None], name='reward')
-            self._obs, self._q, _ = self.net_fn(input_shape=[None] + self.env.observation_shape,
-                                                output_size=self.env.action_shape)
-            self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                              self._scope + 'network')
-        self.global_step = tf.Variable(0, trainable=False, name='global_step')
-        self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
-        self._obs_counter_inc = self._obs_counter.assign_add(1, use_locking=True)
+        self.opt = None
+        self.global_step = None
         self.sess = None
+        self._action = None
+        self._reward = None
+        self._obs = None
+        self._q = None
+        self._weights = None
+        self._obs_counter = None
+        self._obs_counter_inc = None
         self._target_obs = None
         self._target_q = None
         self._target_weights = None
         self._target_update = None
-        self.opt = None
         self._lr = None
         self._action_one_hot = None
         self._loss = None
         self._grads = None
         self._grads_vars = None
         self._train_op = None
+        self._save_var_set = set()
         self._saver = None
         self._summary_op = None
-        self._ready_for_train = False
 
-    def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
-                          decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
-        """Prepares agent for training.
+    def _build_inference_graph(self, env):
+        if self._q is not None:
+            logger.warn("The inference graph has already been built.")
+            return
+        with tf.variable_scope(self._scope + 'network') as scope:
+            self._action = tf.placeholder('int32', [None], name='action')
+            self._reward = tf.placeholder('float32', [None], name='reward')
+            self._obs, self._q, _ = self.net_fn(input_shape=[None] + env.observation_shape,
+                                                output_size=env.action_shape)
+            self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope.name)
+
+    def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
+                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+        """Builds training graph.
 
         Args:
             optimizer: An optimizer name string or class.
-            learning_rate: (float or Tensor) Optimizer's learning rate.
+            learning_rate (float or Tensor): Optimizer's learning rate.
             optimizer_args (dict): Keyword arguments used for optimizer creation.
-            decay: (function) Learning rate decay.
-                   Expects tensorflow decay function or function name string.
-                   Available name strings: 'polynomial', 'exponential'.
-                   To disable, pass None.
-            decay_args: (dict) Keyword arguments, passed to the decay function.
-            gradient_clip: (float) Norm gradient clipping.
+            decay (function): Learning rate decay.
+                              Expects tensorflow decay function or function name string.
+                              Available name strings: 'polynomial', 'exponential'.
+                              To disable, pass None.
+            decay_args (dict): Keyword arguments, passed to the decay function.
+            gradient_clip (float): Norm gradient clipping.
                                    To disable, pass False or None.
-            saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
-                        When exceeds, overwrites the most earliest checkpoints.
+            saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
+                              When exceeds, overwrites the most earliest checkpoints.
         """
-        if self._ready_for_train:
-            logger.warn("The training graph has already been built.")
+        if self._train_op is not None:
+            logger.warn("The training graph has already been built. Skipping.")
             return
-
-        with tf.variable_scope(self._scope + 'target_network'):
+        with tf.variable_scope(self._scope + 'target_network') as scope:
             self._target_obs, self._target_q, _ = \
                 self.net_fn(input_shape=[None] + self.env.observation_shape,
                             output_size=self.env.action_shape)
-
-        with tf.variable_scope(self._scope + 'target_update'):
             self._target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                     self._scope + 'target_network')
+                                                     scope.name)
             self._target_update = [self._target_weights[i].assign(self._weights[i])
                                    for i in range(len(self._target_weights))]
 
         with tf.variable_scope(self._scope + 'optimizer'):
+            self.global_step = tf.Variable(0, trainable=False, name='global_step')
+            self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
+            self._obs_counter_inc = self._obs_counter.assign_add(1, use_locking=True)
             self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate,
                                                        optimizer_args=optimizer_args,
                                                        decay=decay, decay_args=decay_args,
@@ -149,9 +165,68 @@ class BaseDQNAgent(BaseDiscreteAgent):
             self._grads_vars = list(zip(self._grads, self._weights))
             self._train_op = self.opt.apply_gradients(self._grads_vars,
                                                       global_step=self.global_step)
-        self._saver = tf.train.Saver(max_to_keep=saver_keep)
+        self._save_var_set |= set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                    self._scope + 'network'))
+        self._save_var_set |= set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                    self._scope + 'optimizer'))
+        self._saver = tf.train.Saver(var_list=list(self._save_var_set), max_to_keep=saver_keep)
         self._summary_op = tf.no_op()
-        self._ready_for_train = True
+
+    def test(self, episodes, policy=GreedyPolicy(), max_ep_steps=int(1e5), render=False):
+        """Tests agent's performance with specified policy on a given number of episodes.
+
+        Args:
+            episodes (int): Number of episodes.
+            policy (reinforceflow.core.Policy): Agent's policy.
+            max_ep_steps (int): Maximum allowed steps per episode.
+            render (bool): Enables game screen rendering.
+
+        Returns (tuple): Average reward per episode, average max. Q value per episode.
+        """
+        ep_rewards = misc.IncrementalAverage()
+        ep_q = misc.IncrementalAverage()
+        for _ in range(episodes):
+            reward_accum = 0
+            obs = self.env.reset()
+            for _ in range(max_ep_steps):
+                if render:
+                    self.env.render()
+                reward_per_action = self.predict(obs)
+                action = policy.select_action(self.env, reward_per_action)
+                obs, r, terminal, info = self.env.step(action)
+                ep_q.add(np.max(reward_per_action))
+                reward_accum += r
+                if terminal:
+                    break
+            ep_rewards.add(reward_accum)
+        return ep_rewards.compute_average(), ep_q.compute_average()
+
+    def train(self, **kwargs):
+        raise NotImplementedError
+
+    def train_on_batch(self, obs, actions, rewards, summarize=False):
+        """Trains agent on given transitions batch.
+
+        Args:
+            obs (nd.array): Input observations with shape=[batch, height, width, channels].
+            actions (list): Actions.
+            rewards (list): Rewards for each action.
+            summarize (bool): Enables TensorBoard summary writing.
+        """
+        if self._train_op is not None:
+            raise ValueError('Consider calling `build_train_graph` '
+                             'before starting training process.')
+
+        return self._train_on_batch(obs, actions, rewards, summarize)
+
+    def _train_on_batch(self, obs, actions, rewards, summarize=False):
+        _, summary = self.sess.run([self._train_op, self._summary_op if summarize else self.no_op],
+                                   feed_dict={
+                                       self._obs: obs,
+                                       self._action: actions,
+                                       self._reward: rewards
+                                   })
+        return summary
 
     def save_weights(self, path, model_name='model.ckpt'):
         if not os.path.exists(path):
@@ -187,65 +262,6 @@ class BaseDQNAgent(BaseDiscreteAgent):
 
     def target_update(self):
         self.sess.run(self._target_update)
-
-    def train_on_batch(self, obs, actions, rewards, summarize=False):
-        """Trains agent on given transitions batch.
-
-        Args:
-            obs (nd.array): Input observations with shape=[batch, height, width, channels].
-            actions: (list) Actions.
-            rewards: (list) Rewards for each action.
-            summarize: (bool) Enables TensorBoard summary writing.
-        """
-        if not self._ready_for_train:
-            raise ValueError('Consider calling `build_train_graph` '
-                             'before starting training process.')
-
-        return self._train_on_batch(obs, actions, rewards, summarize)
-
-    def _train_on_batch(self, obs, actions, rewards, summarize=False):
-        _, summary = self.sess.run([self._train_op, self._summary_op if summarize else self.no_op],
-                                   feed_dict={
-                                        self._obs: obs,
-                                        self._action: actions,
-                                        self._reward: rewards
-                                        })
-        return summary
-
-    def test(self, episodes, policy=GreedyPolicy(), max_ep_steps=int(1e5), render=False):
-        """Tests agent's performance with specified policy on a given number of episodes.
-
-        Args:
-            episodes: (int) Number of episodes.
-            policy: (reinforceflow.core.Policy) Agent's policy.
-            max_ep_steps: (int) Maximum allowed steps per episode.
-            render: (bool) Enables game screen rendering.
-
-        Returns: (tuple) Average reward per episode, average max. Q value per episode.
-        """
-        ep_rewards = misc.IncrementalAverage()
-        ep_q = misc.IncrementalAverage()
-        for _ in range(episodes):
-            reward_accum = 0
-            obs = self.env.reset()
-            for _ in range(max_ep_steps):
-                if render:
-                    self.env.render()
-                reward_per_action = self.predict(obs)
-                action = policy.select_action(self.env, reward_per_action)
-                obs, r, terminal, info = self.env.step(action)
-                ep_q.add(np.max(reward_per_action))
-                reward_accum += r
-                if terminal:
-                    break
-            ep_rewards.add(reward_accum)
-        return ep_rewards.compute_average(), ep_q.compute_average()
-
-    def _train(self, **kwargs):
-        raise NotImplementedError
-
-    def train(self, **kwargs):
-        raise NotImplementedError
 
     def close(self):
         if self.sess:

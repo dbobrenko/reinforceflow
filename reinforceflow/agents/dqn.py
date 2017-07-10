@@ -35,12 +35,13 @@ class DQNAgent(BaseDQNAgent):
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=config)
+        self._build_inference_graph(self.env)
 
-    def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
-                          decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
-        super(DQNAgent, self).build_train_graph(optimizer, learning_rate,
-                                                optimizer_args, decay, decay_args,
-                                                gradient_clip, saver_keep)
+    def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
+                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+        super(DQNAgent, self)._build_train_graph(optimizer, learning_rate,
+                                                 optimizer_args, decay, decay_args,
+                                                 gradient_clip, saver_keep)
         for grad, w in self._grads_vars:
             tf.summary.histogram(w.name, w)
             tf.summary.histogram(w.name + '/gradients', grad)
@@ -56,22 +57,14 @@ class DQNAgent(BaseDQNAgent):
         tf.summary.scalar('metrics/loss', self._loss)
         self._summary_op = tf.summary.merge_all()
 
-    def _train(self,
-               max_steps,
-               log_dir,
-               render,
-               target_freq,
-               gamma,
-               experience,
-               policy,
-               log_freq,
-               ckpt_freq):
+    def _train(self, max_steps, log_dir, render, target_freq, gamma, experience,
+               policy, log_freq, ckpt_freq):
         ep_reward = misc.IncrementalAverage()
         ep_q = misc.IncrementalAverage()
         reward_accum = 0
         episode = 0
-        self.sess.run(tf.global_variables_initializer())
         writer = tf.summary.FileWriter(log_dir, self.sess.graph)
+        self.sess.run(tf.global_variables_initializer())
         if log_dir and tf.train.latest_checkpoint(log_dir) is not None:
             self.load_weights(log_dir)
         obs = self.env.reset()
@@ -195,9 +188,8 @@ class DQNAgent(BaseDQNAgent):
             saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
                         When exceeds, overwrites the most earliest checkpoints.
         """
-        if not self._ready_for_train:
-            self.build_train_graph(optimizer, learning_rate, optimizer_args,
-                                   decay, decay_args, gradient_clip, saver_keep)
+        self._build_train_graph(optimizer, learning_rate, optimizer_args,
+                                decay, decay_args, gradient_clip, saver_keep)
         try:
             self._train(max_steps, log_dir, render, target_freq, gamma,
                         experience, policy, log_freq, ckpt_freq)

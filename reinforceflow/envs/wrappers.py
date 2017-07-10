@@ -15,11 +15,11 @@ def ScreenWrapper(stack_len, height, width, action_repeat=1, to_gray=True):
         def __init__(self, env):
             super(ScreenWrapper, self).__init__(env)
             if not isinstance(self.observation_space, spaces.Box):
-                raise error.UnsupportedSpace('%s expects Box observation space with pixel screen inputs'
-                                             % self.class_name())
+                raise error.UnsupportedSpace('%s expects Box observation space '
+                                             'with pixel screen inputs' % self.class_name())
             if len(self.observation_space.shape) not in [2, 3]:
-                raise error.UnsupportedSpace('%s expects Box observation space with pixel screen inputs'
-                                             % self.class_name())
+                raise error.UnsupportedSpace('%s expects Box observation space '
+                                             'with pixel screen inputs' % self.class_name())
 
             self._frame_stack = None
             self._prev_frame = None
@@ -31,7 +31,8 @@ def ScreenWrapper(stack_len, height, width, action_repeat=1, to_gray=True):
 
             low = np.min(self.observation_space.low)
             high = np.max(self.observation_space.high)
-            self.env.observation_space = spaces.Box(low, high, (self.height, self.width, self.stack_len))
+            self.env.observation_space = spaces.Box(low, high,
+                                                    (self.height, self.width, self.stack_len))
 
         def _step(self, action):
             stack_reset = self._needs_stack_reset
