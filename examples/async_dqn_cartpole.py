@@ -2,7 +2,15 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-import reinforceflow
+# This try-except block needs only if you haven't installed reinforceflow
+try:
+    import reinforceflow
+except ImportError:
+    import os.path
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    import reinforceflow
+
 from reinforceflow.agents.async_dqn import AsyncDQNAgent
 from reinforceflow.nets import mlp
 reinforceflow.set_random_seed(321)
