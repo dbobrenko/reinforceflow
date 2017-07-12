@@ -4,9 +4,9 @@
 
 ReinforceFlow expects to contain high-quality realizations of the state-of-the-art solutions for RL problems.
 
-:construction: *Project is under heavy development and sometimes may be unstable. Some of it's components may undergo considerable changes in future.*
-
 ReinforceFlow was designed to work with [OpenAI Gym](https://gym.openai.com/) interface and [TensorFlow framework](https://www.tensorflow.org/) for some advanced deep learning stuff.
+
+:construction: *Project is under heavy development and sometimes may be unstable. Some of it's components may undergo considerable changes in future.*
 
 ## Requirements
   1. Python 2.7 or 3.4+;
