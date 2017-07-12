@@ -36,12 +36,11 @@ python examples/dqn_cartpole.py
 
 ## Constantly evolving tasks list:
   - [x] Vanilla DQN
-  - [x] Double DQN
-  - [ ] Async DQN
-  - [ ] Stochastic PG
+  - [x] Async DQN
   - [ ] Prioritized Replay
-  - [ ] Dueling DQN
   - [ ] A3C
+  - [ ] Dueling DQN
+  - [ ] Stochastic PG
 
 
 ## Related projects:
