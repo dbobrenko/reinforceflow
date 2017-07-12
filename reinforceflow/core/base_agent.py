@@ -80,10 +80,8 @@ class BaseDQNAgent(BaseDiscreteAgent):
         super(BaseDQNAgent, self).__init__(env=env)
         self.net_fn = net_fn
         self._scope = '' if not name else name + '/'
-        with tf.variable_scope(self._scope + 'optimizer'):
-            self.global_step = tf.Variable(0, trainable=False, name='global_step')
-            self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
-            self._obs_counter_inc = self._obs_counter.assign_add(1, use_locking=True)
+        self.global_step = None
+        self._obs_counter = None
         self._no_op = tf.no_op()
         self.opt = None
         self.sess = None
@@ -150,6 +148,9 @@ class BaseDQNAgent(BaseDiscreteAgent):
                                    for i in range(len(self._target_weights))]
 
         with tf.variable_scope(self._scope + 'optimizer'):
+            self.global_step = tf.Variable(0, trainable=False, name='global_step')
+            self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
+            self._obs_counter_inc = self._obs_counter.assign_add(1, use_locking=True)
             self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate,
                                                        optimizer_args=optimizer_args,
                                                        decay=decay, decay_args=decay_args,

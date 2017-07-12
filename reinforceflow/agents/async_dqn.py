@@ -134,6 +134,7 @@ class AsyncDQNAgent(BaseDQNAgent):
                 if render:
                     for env in envs:
                         env.render()
+                    time.sleep(0.01)
                 step = self.obs_counter
                 if step - last_log_step >= log_freq:
                     last_log_step = step
@@ -142,7 +143,6 @@ class AsyncDQNAgent(BaseDQNAgent):
                 if step - last_target_update >= target_freq:
                     last_target_update = step
                     self.target_update()
-                [t.join(1) for t in thread_agents if t is not None and t.isAlive()]
             except KeyboardInterrupt:
                 logger.info('Caught Ctrl+C! Stopping training process.')
                 self.request_stop = True
@@ -205,7 +205,7 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
             self._grads = tf.gradients(self._loss, self._weights)
             if gradient_clip:
                 self._grads, _ = tf.clip_by_global_norm(self._grads, gradient_clip)
-            self._grads_vars = list(zip(self._grads, self._weights))
+            self._grads_vars = list(zip(self._grads, self.global_agent.weights))
             self._train_op = self.global_agent.opt.apply_gradients(self._grads_vars,
                                                                    self.global_agent.global_step)
             self._sync_op = [self._weights[i].assign(self.global_agent.weights[i])
