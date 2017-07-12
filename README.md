@@ -13,7 +13,7 @@ ReinforceFlow was designed to work with [OpenAI Gym](https://gym.openai.com/) in
   2. `pip install -r requirements.txt`
   3. [OpenAI Gym](https://gym.openai.com/).
   
-*ReinforceFlow as standalone library haven't been released yet.*
+*ReinforceFlow as standalone library hasn't been released yet.*
 
 ## Usage
 Examples can be found at `examples` directory.
