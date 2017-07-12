@@ -17,25 +17,20 @@ from reinforceflow import logger
 
 
 class DQNAgent(BaseDQNAgent):
-    def __init__(self, env, net_fn=dqn, name=''):
-        """Constructs Deep Q-Network agent, based on paper
+    def __init__(self, env, net_fn=dqn, use_gpu=True,  name=''):
+        """Constructs Deep Q-Network agent, based on paper:
         "Human-level control through deep reinforcement learning", Mnih et al., 2015.
 
-        Args:
-            env (reinforceflow.EnvWrapper): Environment wrapper.
-            net_fn: (function) Takes `input_shape` and `output_size` arguments,
-                    returns tuple(input Tensor, output Tensor, all end point Tensors).
-
-        Attributes:
-            env: Current environment.
-            net_fn: Function, used for building network model.
-            name: Agent's name prefix.
+        See `core.base_agent.BaseDQNAgent.__init__`.
         """
         super(DQNAgent, self).__init__(env=env, net_fn=net_fn, name=name)
-        config = tf.ConfigProto()
+        config = tf.ConfigProto(
+            device_count={'GPU': use_gpu}
+        )
         config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=config)
         self._build_inference_graph(self.env)
+        self.sess.run(tf.global_variables_initializer())
 
     def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
                            decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
@@ -56,15 +51,16 @@ class DQNAgent(BaseDQNAgent):
         tf.summary.scalar('agent/learning_rate', self._lr)
         tf.summary.scalar('metrics/loss', self._loss)
         self._summary_op = tf.summary.merge_all()
+        self._init_op = tf.global_variables_initializer()
 
     def _train(self, max_steps, log_dir, render, target_freq, gamma, experience,
-               policy, log_freq, ckpt_freq):
+               policy, log_freq):
         ep_reward = misc.IncrementalAverage()
         ep_q = misc.IncrementalAverage()
         reward_accum = 0
         episode = 0
         writer = tf.summary.FileWriter(log_dir, self.sess.graph)
-        self.sess.run(tf.global_variables_initializer())
+        self.sess.run(self._init_op)
         if log_dir and tf.train.latest_checkpoint(log_dir) is not None:
             self.load_weights(log_dir)
         obs = self.env.reset()
@@ -84,7 +80,6 @@ class DQNAgent(BaseDQNAgent):
             experience.add({'obs': obs, 'action': action, 'reward': reward,
                             'obs_next': obs_next, 'term': term})
             obs = obs_next
-            # Update step:
             if experience.is_ready:
                 batch = experience.sample()
                 tr_obs = []
@@ -106,7 +101,7 @@ class DQNAgent(BaseDQNAgent):
                 if step % target_freq == target_freq-1:
                     self.target_update()
 
-                if log_dir and step % ckpt_freq == ckpt_freq-1:
+                if log_dir and step % log_freq == log_freq-1:
                     self.save_weights(log_dir)
 
                 # Eval & log
@@ -159,8 +154,7 @@ class DQNAgent(BaseDQNAgent):
               render=False,
               gamma=0.99,
               target_freq=10000,
-              log_freq=100,
-              ckpt_freq=20000,
+              log_freq=2000,
               saver_keep=10):
         """Starts training process.
 
@@ -170,8 +164,8 @@ class DQNAgent(BaseDQNAgent):
             learning_rate (float or Tensor): Optimizer's learning rate.
             log_dir: (str) directory for summary and checkpoints.
                      Continues training, if checkpoint already exists.
-            experience: (reinforceflow.core.ExperienceReplay) Experience buffer.
-            policy: (reinforceflow.core.Policy) Agent's training policy.
+            experience: (core.ExperienceReplay) Experience buffer.
+            policy: (core.Policy) Agent's training policy.
             optimizer_args (dict): Keyword arguments, used for optimizer creation.
             decay: (function) Learning rate decay.
                    Expects tensorflow decay function or function name string.
@@ -184,7 +178,6 @@ class DQNAgent(BaseDQNAgent):
             gamma (float): Reward discount factor.
             target_freq (int): Target network update frequency (in update steps).
             log_freq (int): Log and summary frequency (in update steps).
-            ckpt_freq (int): Checkpoint saving frequency (in update steps).
             saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
                         When exceeds, overwrites the most earliest checkpoints.
         """
@@ -192,7 +185,7 @@ class DQNAgent(BaseDQNAgent):
                                 decay, decay_args, gradient_clip, saver_keep)
         try:
             self._train(max_steps, log_dir, render, target_freq, gamma,
-                        experience, policy, log_freq, ckpt_freq)
+                        experience, policy, log_freq)
             logger.info('Training finished.')
         except KeyboardInterrupt:
             logger.info('Stopping training process...')

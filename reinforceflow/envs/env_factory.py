@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
 import gym
 from reinforceflow.envs.env_wrapper import EnvWrapper
 from reinforceflow.envs.wrappers import AtariWrapper
@@ -38,7 +39,9 @@ class EnvFactory(object):
 
 
 def make_new_env(env):
-    if isinstance(env, gym.Wrapper):
+    if isinstance(env, six.string_types):
+        return EnvFactory.make(env)
+    elif isinstance(env, gym.Wrapper):
         return EnvFactory.make(env.spec.id)
     else:
         raise ValueError('Unknown environment type. '
