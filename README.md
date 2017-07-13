@@ -2,11 +2,11 @@
 
 **ReinforceFlow** is an AI framework for training and evaluating **Reinforcement Learning** (RL) algorithms.
 
-ReinforceFlow expects to contain high-quality realizations of the state-of-the-art solutions for RL problems.
+ReinforceFlow contains a bunch of implementations of the state-of-the-art solutions for RL problems.
 
-ReinforceFlow was designed to work with [OpenAI Gym](https://gym.openai.com/) interface and [TensorFlow framework](https://www.tensorflow.org/) for some advanced deep learning stuff.
+ReinforceFlow was initially designed to work with [OpenAI Gym](https://gym.openai.com/) interface and [TensorFlow framework](https://www.tensorflow.org/) for some advanced deep learning stuff.
 
-:construction: *Project is under heavy development and sometimes may be unstable. Some of it's components may undergo considerable changes in future.*
+:construction: *Note: Project is under heavy development and sometimes could be unstable. Some of it's components may undergo considerable changes in future.*
 
 ## Requirements
   1. Python 2.7 or 3.4+;
@@ -35,11 +35,11 @@ python examples/dqn_cartpole.py
 
 
 ## Constantly evolving tasks list:
-  - [x] Vanilla DQN
-  - [x] Async DQN
+  - [x] [DQN] Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
+  - [x] Asynchronous N-step Q-Learning ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/async_dqn.py))
   - [ ] Prioritized Replay
-  - [ ] A3C
-  - [ ] Dueling DQN
+  - [ ] [A3C] Asynchronous Advantage Actor-Critic
+  - [ ] Dueling Deep Q-Network
   - [ ] Stochastic PG
 
 
