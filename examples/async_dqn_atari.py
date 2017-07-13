@@ -10,14 +10,13 @@ except ImportError:
     import sys
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     import reinforceflow
-
 from reinforceflow.agents.async_dqn import AsyncDQNAgent
 from reinforceflow.nets import dqn
 reinforceflow.set_random_seed(321)
 
 env = 'SpaceInvaders-v0'
 steps = 80000000
-agent = AsyncDQNAgent(env, net_fn=dqn)
+agent = AsyncDQNAgent(env, net_fn=dqn, use_gpu=True)
 agent.train(num_threads=4,
             render=False,
             steps=steps,
@@ -29,4 +28,4 @@ agent.train(num_threads=4,
             gamma=0.99,
             batch_size=32,
             log_freq=20000,
-            log_dir='/tmp/reinforceflow/%s/rms/' % env)
+            log_dir='/tmp/reinforceflow/async_dqn/%s/rms/' % env)

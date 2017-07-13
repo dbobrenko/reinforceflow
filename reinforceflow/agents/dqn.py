@@ -17,11 +17,13 @@ from reinforceflow import logger
 
 
 class DQNAgent(BaseDQNAgent):
-    def __init__(self, env, net_fn=dqn, use_gpu=True,  name=''):
+    def __init__(self, env, net_fn=dqn, use_double=True, use_gpu=True, name=''):
         """Constructs Deep Q-Network agent, based on paper:
         "Human-level control through deep reinforcement learning", Mnih et al., 2015.
 
         See `core.base_agent.BaseDQNAgent.__init__`.
+        Args:
+            use_double (bool): Enables Double DQN.
         """
         super(DQNAgent, self).__init__(env=env, net_fn=net_fn, name=name)
         config = tf.ConfigProto(
@@ -31,6 +33,7 @@ class DQNAgent(BaseDQNAgent):
         self.sess = tf.Session(config=config)
         self._build_inference_graph(self.env)
         self.sess.run(tf.global_variables_initializer())
+        self._use_double = use_double
 
     def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
                            decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
@@ -90,7 +93,11 @@ class DQNAgent(BaseDQNAgent):
                     tr_action.append(transition['action'])
                     td_target = transition['reward']
                     if not transition['term']:
-                        q = np.max(self.target_predict(transition['obs_next']).flatten())
+                        if self._use_double:
+                            action_idx = np.argmax(self.predict(transition['obs_next']))
+                            q = self.target_predict(transition['obs_next'])[:, action_idx].squeeze()
+                        else:
+                            q = np.max(self.target_predict(transition['obs_next']).flatten())
                         td_target += gamma * q
                         ep_q.add(q)
                     tr_reward.append(td_target)

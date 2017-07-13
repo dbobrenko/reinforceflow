@@ -38,9 +38,10 @@ class AsyncDQNAgent(BaseDQNAgent):
         self._prev_obs_step = None
         self._prev_opt_step = None
         self._last_time = None
+        self.writer = None
         self.sess.run(tf.global_variables_initializer())
 
-    def _write_summary(self, writer, test_episodes=3):
+    def _write_summary(self, test_episodes=3):
         test_r, test_q = self.test(episodes=test_episodes)
         obs_step = self.obs_counter
         obs_per_sec = (self.obs_counter - self._prev_obs_step) / (time.time() - self._last_time)
@@ -57,7 +58,7 @@ class AsyncDQNAgent(BaseDQNAgent):
                 tf.Summary.Value(tag='performance/observation/sec', simple_value=obs_per_sec),
                 tf.Summary.Value(tag='performance/update/sec', simple_value=opt_per_sec)
                 ]
-        writer.add_summary(tf.Summary(value=logs), global_step=obs_step)
+        self.writer.add_summary(tf.Summary(value=logs), global_step=obs_step)
 
     def train(self,
               num_threads,
@@ -86,7 +87,6 @@ class AsyncDQNAgent(BaseDQNAgent):
         self._build_train_graph(optimizer, learning_rate, optimizer_args=optimizer_args,
                                 decay=decay, decay_args=decay_args,
                                 gradient_clip=gradient_clip, saver_keep=saver_keep)
-        writer = tf.summary.FileWriter(log_dir, self.sess.graph)
         for t in range(num_threads):
             eps_min = random.choice(epsilon_pool)
             logger.debug("Sampling minimum epsilon = %0.2f for Thread-Learner #%d." % (eps_min, t))
@@ -102,7 +102,6 @@ class AsyncDQNAgent(BaseDQNAgent):
                                       target_freq=target_freq,
                                       policy=policy,
                                       log_freq=log_freq,
-                                      summary_writer=writer,
                                       optimizer_args=optimizer_args,
                                       decay=decay,
                                       decay_args=decay_args,
@@ -112,6 +111,7 @@ class AsyncDQNAgent(BaseDQNAgent):
                                       saver_keep=saver_keep,
                                       name='ThreadLearner%d' % t)
             thread_agents.append(agent)
+        self.writer = tf.summary.FileWriter(log_dir, self.sess.graph)
         self.sess.run(tf.global_variables_initializer())
         if log_dir and tf.train.latest_checkpoint(log_dir) is not None:
             self.load_weights(log_dir)
@@ -138,7 +138,7 @@ class AsyncDQNAgent(BaseDQNAgent):
                 step = self.obs_counter
                 if step - last_log_step >= log_freq:
                     last_log_step = step
-                    self._write_summary(writer)
+                    self._write_summary()
                     self.save_weights(log_dir)
                 if step - last_target_update >= target_freq:
                     last_target_update = step
@@ -148,7 +148,7 @@ class AsyncDQNAgent(BaseDQNAgent):
                 self.request_stop = True
         self.save_weights(log_dir)
         logger.info('Training finished!')
-        writer.close()
+        self.writer.close()
         for agent in thread_agents:
             agent.close()
 
@@ -167,7 +167,6 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
                  target_freq,
                  policy,
                  log_freq,
-                 summary_writer,
                  optimizer_args=None,
                  decay=None,
                  decay_args=None,
@@ -188,7 +187,6 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
         self.log_freq = log_freq
         self.gamma = gamma
         self.batch_size = batch_size
-        self.writer = summary_writer
 
     def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
                            decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
@@ -280,8 +278,9 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
                             tf.Summary.Value(tag=self._scope + 'epsilon',
                                              simple_value=self.policy.epsilon)
                             ]
-                    self.writer.add_summary(tf.Summary(value=logs), global_step=prev_step)
-                    self.writer.add_summary(summary_str, global_step=prev_step)
+                    self.global_agent.writer.add_summary(tf.Summary(value=logs),
+                                                         global_step=prev_step)
+                    self.global_agent.writer.add_summary(summary_str, global_step=prev_step)
 
     def close(self):
         pass

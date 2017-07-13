@@ -10,7 +10,6 @@ except ImportError:
     import sys
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     import reinforceflow
-
 from reinforceflow.agents.dqn import DQNAgent
 from reinforceflow.nets import mlp
 from reinforceflow.envs import EnvFactory
@@ -21,7 +20,7 @@ reinforceflow.set_random_seed(321)
 
 env = EnvFactory.make('CartPole-v0')
 steps = 70000
-agent = DQNAgent(env, net_fn=mlp)
+agent = DQNAgent(env, net_fn=mlp, use_gpu=True)
 agent.train(max_steps=steps,
             render=False,
             optimizer='rms',
