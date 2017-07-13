@@ -10,10 +10,9 @@ ReinforceFlow was initially designed to work with [OpenAI Gym](https://gym.opena
 
 ## Requirements
   1. Python 2.7 or 3.4+;
-  2. `pip install -r requirements.txt`
-  3. [OpenAI Gym](https://gym.openai.com/).
-  
-*ReinforceFlow as standalone library hasn't been released yet.*
+  2. [OpenAI Gym](https://gym.openai.com/);
+  3. `python setup.py install` **or** install requirements manually.
+
 
 ## Usage
 Examples can be found at `examples` directory.
@@ -36,6 +35,7 @@ python examples/dqn_cartpole.py
 
 ## Constantly evolving tasks list:
   - [x] [DQN] Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
+  - [x] Double Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
   - [x] Asynchronous N-step Q-Learning ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/async_dqn.py))
   - [ ] Prioritized Replay
   - [ ] [A3C] Asynchronous Advantage Actor-Critic
