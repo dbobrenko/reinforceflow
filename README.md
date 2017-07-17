@@ -17,9 +17,9 @@ ReinforceFlow was initially designed to work with [OpenAI Gym](https://gym.opena
 ## Usage
 Examples can be found at `examples` directory.
 
-To train **Async N-step DQN on SpaceInvaders**, run:
+To train **Async N-step DQN on Breakout**, run:
 ```
-python examples/async_dqn_atari.py
+python examples/async_dqn_breakout.py
 ```
 
 To train **Async N-step DQN on CartPole**, run:

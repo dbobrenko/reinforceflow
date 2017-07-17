@@ -11,21 +11,21 @@ except ImportError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     import reinforceflow
 from reinforceflow.agents.async_dqn import AsyncDQNAgent
-from reinforceflow.nets import mlp
+from reinforceflow.nets import dqn
 reinforceflow.set_random_seed(321)
 
-env = 'CartPole-v0'
-steps = 250000
-agent = AsyncDQNAgent(env, net_fn=mlp, use_gpu=True)
-lr = 0.01
+env = 'Breakout-v0'
+steps = 80000000
+agent = AsyncDQNAgent(env, net_fn=dqn, use_gpu=True)
 agent.train(num_threads=4,
             render=False,
             steps=steps,
-            optimizer='adam',
-            learning_rate=lr,
-            epsilon_steps=steps / 10,
+            optimizer='rms',
+            learning_rate=0.0001,
+            epsilon_pool=4*[0.1] + 3*[0.01] + 3*[0.5],
+            epsilon_steps=4000000,
             target_freq=40000,
             gamma=0.99,
             batch_size=32,
             log_freq=20000,
-            log_dir='/tmp/reinforceflow/async_dqn/%s/adam_%s/' % (env, lr))
+            log_dir='/tmp/reinforceflow/async_dqn/%s/master_4th/' % env)

@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-# This try-except block needs only if you haven't installed reinforceflow
+# This try-except block needs only if reinforceflow isn't installed
 try:
     import reinforceflow
 except ImportError:
@@ -20,12 +20,12 @@ reinforceflow.set_random_seed(321)
 
 env = EnvFactory.make('CartPole-v0')
 steps = 70000
-agent = DQNAgent(env, net_fn=mlp, use_gpu=True)
+agent = DQNAgent(env, net_fn=mlp, use_double=True, use_gpu=True)
 agent.train(max_steps=steps,
             render=False,
             optimizer='rms',
             learning_rate=0.0001,
-            log_dir='/tmp/reinforceflow/%s/rms' % env.spec.id[:-3],
+            log_dir='/tmp/reinforceflow/double_dqn/%s/rms' % env.spec.id[:-3],
             target_freq=5000,
             experience=ExperienceReplay(size=5000, batch_size=32, min_size=500),
             policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=30000))
