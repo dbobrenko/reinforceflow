@@ -11,7 +11,7 @@ from six.moves import range  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from reinforceflow import error
-from reinforceflow.envs.env_wrapper import EnvWrapper
+from reinforceflow.envs.env_wrappers import EnvWrapper
 from reinforceflow.core import GreedyPolicy
 from reinforceflow import misc
 from reinforceflow import logger
@@ -68,7 +68,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
         """Abstract base class for Deep Q-Network agent.
 
         Args:
-            env (envs.EnvWrapper): Environment wrapper.
+            env (envs.RawGymWrapper): Environment wrapper.
             net_fn: Function, takes `input_shape` and `output_size` arguments,
                     returns tuple(input Tensor, output Tensor, all end point Tensors).
 

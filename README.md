@@ -11,7 +11,7 @@ ReinforceFlow was initially designed to work with [OpenAI Gym](https://gym.opena
 ## Requirements
   1. Python 2.7 or 3.4+;
   2. [OpenAI Gym](https://gym.openai.com/);
-  3. `python setup.py install` **or** install requirements manually.
+  3. `pip install -e .`
 
 
 ## Usage

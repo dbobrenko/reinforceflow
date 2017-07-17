@@ -15,7 +15,6 @@ from reinforceflow.core import EGreedyPolicy
 from reinforceflow import misc
 from reinforceflow import logger
 from reinforceflow.misc import discount_rewards
-from reinforceflow.envs.env_factory import make_new_env
 
 
 class AsyncDQNAgent(BaseDQNAgent):
@@ -91,7 +90,7 @@ class AsyncDQNAgent(BaseDQNAgent):
             eps_min = random.choice(epsilon_pool)
             logger.debug("Sampling minimum epsilon = %0.2f for Thread-Learner #%d." % (eps_min, t))
             policy = EGreedyPolicy(eps_start=1.0, eps_final=eps_min, anneal_steps=epsilon_steps)
-            env = make_new_env(self.env)
+            env = self.env.copy()
             envs.append(env)
             agent = _ThreadDQNLearner(env=env,
                                       net_fn=self.net_fn,
