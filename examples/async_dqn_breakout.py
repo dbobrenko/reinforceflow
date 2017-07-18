@@ -11,10 +11,11 @@ except ImportError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
     import reinforceflow
 from reinforceflow.agents.async_dqn import AsyncDQNAgent
+from reinforceflow.envs.env_factory import EnvFactory
 from reinforceflow.nets import dqn
 reinforceflow.set_random_seed(321)
 
-env = 'Breakout-v0'
+env = EnvFactory.make('Breakout-v0', use_smart_wrap=True)
 steps = 80000000
 agent = AsyncDQNAgent(env, net_fn=dqn, use_gpu=True)
 agent.train(num_threads=4,

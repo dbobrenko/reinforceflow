@@ -18,7 +18,7 @@ from reinforceflow.core.experience import ExperienceReplay
 reinforceflow.set_random_seed(321)
 
 
-env = EnvFactory.make('CartPole-v0')
+env = 'CartPole-v0'
 steps = 70000
 agent = DQNAgent(env, net_fn=mlp, use_double=True, use_gpu=True)
 agent.train(max_steps=steps,

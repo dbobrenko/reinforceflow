@@ -17,7 +17,7 @@ from reinforceflow.core import EGreedyPolicy
 reinforceflow.set_random_seed(321)
 
 steps = 10000000
-env = 'Pong-v0'
+env = EnvFactory.make('Breakout-v0', use_smart_wrap=True)
 optimizer_args = {'momentum': 0.95, 'epsilon': 0.01}
 decay_args = {'power': 1.0, 'decay_steps': steps}
 # Authors of the DQN used replay buffer size of 1000000 (1 million of frames).
