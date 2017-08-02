@@ -15,18 +15,18 @@ from reinforceflow.envs.env_factory import EnvFactory
 from reinforceflow.nets import dqn
 reinforceflow.set_random_seed(321)
 
-env = EnvFactory.make('Breakout-v0', use_smart_wrap=True)
+env = EnvFactory.make('SpaceInvaders-v0', use_smart_wrap=True)
 steps = 80000000
 agent = AsyncDQNAgent(env, net_fn=dqn, use_gpu=True)
-agent.train(num_threads=4,
+agent.train(num_threads=8,
             render=False,
             steps=steps,
             optimizer='rms',
-            learning_rate=0.0001,
+            learning_rate=0.001,
             epsilon_pool=4*[0.1] + 3*[0.01] + 3*[0.5],
             epsilon_steps=4000000,
             target_freq=40000,
             gamma=0.99,
             batch_size=32,
             log_freq=20000,
-            log_dir='/tmp/reinforceflow/async_dqn/%s/master_4th/' % env)
+            log_dir='/tmp/reinforceflow/async_dqn/%s/paper_8thr/' % env)
