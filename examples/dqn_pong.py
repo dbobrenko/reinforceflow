@@ -14,6 +14,7 @@ from reinforceflow.agents.dqn import DQNAgent
 from reinforceflow.core import ExperienceReplay
 from reinforceflow.nets import dqn
 from reinforceflow.core import EGreedyPolicy
+from reinforceflow.envs import EnvFactory
 reinforceflow.set_random_seed(321)
 
 steps = 10000000
@@ -21,11 +22,12 @@ env = EnvFactory.make('Breakout-v0', use_smart_wrap=True)
 optimizer_args = {'momentum': 0.95, 'epsilon': 0.01}
 decay_args = {'power': 1.0, 'decay_steps': steps}
 # Authors of the DQN used replay buffer size of 1000000 (1 million of frames).
-# Since the entire buffer lives in RAM, it will require 100+ GB of memory.
+# Since the entire buffer lives in RAM, it will require 100+ GB of sumtree.
 # That's why 20000 was chosen by default (~4 GB RAM), and it seems to be converging.
 replay_size = 20000
 
-agent = DQNAgent(env, net_fn=dqn, use_double=True, use_gpu=True)
+
+agent = DQNAgent(env, net_fn=dqn, use_double=False, use_gpu=True)
 agent.train(max_steps=steps,
             render=False,
             optimizer='rms',
@@ -35,4 +37,4 @@ agent.train(max_steps=steps,
             decay_args=decay_args,
             log_dir='/tmp/reinforceflow/double_dqn/%s/rms_paper/' % env,
             policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=1000000),
-            experience=ExperienceReplay(size=replay_size, min_size=50000, batch_size=32))
+            experience=ExperienceReplay(capacity=replay_size, min_size=20000, batch_size=32))
