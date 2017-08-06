@@ -23,7 +23,7 @@ class DQNAgent(BaseDQNAgent):
 
         See `core.base_agent.BaseDQNAgent.__init__`.
         Args:
-            use_double (bool): Enables Double DQN.
+            use_double: (bool) Enables Double DQN.
         """
         super(DQNAgent, self).__init__(env=env, net_fn=net_fn, name=name)
         config = tf.ConfigProto(
@@ -56,8 +56,7 @@ class DQNAgent(BaseDQNAgent):
         self._summary_op = tf.summary.merge_all()
         self._init_op = tf.global_variables_initializer()
 
-    def _train(self, max_steps, log_dir, render, target_freq, gamma, experience,
-               policy, log_freq):
+    def _train(self, max_steps, log_dir, render, target_freq, gamma, replay, policy, log_freq):
         ep_reward = misc.IncrementalAverage()
         ep_q = misc.IncrementalAverage()
         reward_accum = 0
@@ -70,7 +69,8 @@ class DQNAgent(BaseDQNAgent):
         last_time = time.time()
         last_step = self.step_counter
         last_obs = self.obs_counter
-        for _ in range(max_steps):
+        step = self.step_counter
+        while step < max_steps:
             self.increment_obs_counter()
             step = self.step_counter
             if render:
@@ -80,31 +80,29 @@ class DQNAgent(BaseDQNAgent):
             obs_next, reward, term, info = self.env.step(action)
             reward_accum += reward
             reward = np.clip(reward, -1, 1)
-            experience.add({'obs': obs, 'action': action, 'reward': reward,
-                            'obs_next': obs_next, 'term': term})
+            replay.add(obs, action, reward, obs_next, term)
             obs = obs_next
-            if experience.is_ready:
-                batch = experience.sample()
-                tr_obs = []
-                tr_action = []
-                tr_reward = []
-                for transition in batch:
-                    tr_obs.append(transition['obs'])
-                    tr_action.append(transition['action'])
-                    td_target = transition['reward']
-                    if not transition['term']:
-                        if self._use_double:
-                            action_idx = np.argmax(self.predict(transition['obs_next']))
-                            q = self.target_predict(transition['obs_next'])[:, action_idx].squeeze()
-                        else:
-                            q = np.max(self.target_predict(transition['obs_next']).flatten())
-                        td_target += gamma * q
-                        ep_q.add(q)
-                    tr_reward.append(td_target)
+            if replay.is_ready:
+                batch = replay.sample()
+                batch_obs, batch_action, batch_reward, batch_o_next, batch_term, batch_idxs = batch
+                q_values = self.target_predict(batch_o_next)
+                if self._use_double:
+                    idx_mask = np.zeros_like(q_values, dtype=np.bool)
+                    action_idxs = np.argmax(self.predict(batch_o_next), axis=1)
+                    for i, idx in enumerate(action_idxs):
+                        idx_mask[i, idx] = True
+                    q_values = q_values[idx_mask]
+                else:
+                    q_values = np.max(q_values, axis=1)
+                ep_q.add_batch(q_values)
+                batch_reward += (1 - batch_term) * gamma * q_values
                 summarize = term and log_freq and step - last_step > log_freq
-                summary_str = self._train_on_batch(np.vstack(tr_obs),
-                                                   tr_action, tr_reward, summarize)
-
+                td_error, summary_str = self._train_on_batch(batch_obs, batch_action,
+                                                             batch_reward, summarize)
+                try:
+                    replay.update(td_error, batch_idxs)
+                except AttributeError:
+                    pass
                 if step % target_freq == target_freq-1:
                     self.target_update()
 
@@ -152,7 +150,7 @@ class DQNAgent(BaseDQNAgent):
               optimizer,
               learning_rate,
               log_dir,
-              experience=ExperienceReplay(size=20000, min_size=5000, batch_size=32),
+              experience=ExperienceReplay(capacity=20000, min_size=5000, batch_size=32),
               policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=20000),
               optimizer_args=None,
               decay=None,
@@ -166,14 +164,14 @@ class DQNAgent(BaseDQNAgent):
         """Starts training process.
 
         Args:
-            max_steps: number of training steps (optimizer steps).
+            max_steps: (int) Number of training steps (optimizer steps).
             optimizer: An optimizer string name or class.
-            learning_rate (float or Tensor): Optimizer's learning rate.
+            learning_rate: (float or Tensor) Optimizer's learning rate.
             log_dir: (str) directory for summary and checkpoints.
                      Continues training, if checkpoint already exists.
             experience: (core.ExperienceReplay) Experience buffer.
-            policy: (core.Policy) Agent's training policy.
-            optimizer_args (dict): Keyword arguments, used for optimizer creation.
+            policy: (core.BasePolicy) Agent's training policy.
+            optimizer_args: (dict) Keyword arguments, used for optimizer creation.
             decay: (function) Learning rate decay.
                    Expects tensorflow decay function or function name string.
                    Available name strings: 'polynomial', 'exponential'.
@@ -182,9 +180,9 @@ class DQNAgent(BaseDQNAgent):
             gradient_clip: (float) Norm gradient clipping.
                            To disable, pass 0 or None.
             render: (bool) Enables game screen rendering.
-            gamma (float): Reward discount factor.
-            target_freq (int): Target network update frequency (in update steps).
-            log_freq (int): Log and summary frequency (in update steps).
+            gamma: (float) Reward discount factor.
+            target_freq: (int) Target network update frequency (in update steps).
+            log_freq: (int) Log and summary frequency (in update steps).
             saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
                         When exceeds, overwrites the most earliest checkpoints.
         """

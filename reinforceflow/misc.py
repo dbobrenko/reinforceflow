@@ -1,12 +1,13 @@
 from __future__ import absolute_import
-from __future__ import print_function
 from __future__ import division
+from __future__ import print_function
 
 import six
+import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
-from reinforceflow import logger
 
+from reinforceflow import logger
 
 _OPTIMIZER_MAP = {
     'rms': tf.train.RMSPropOptimizer,
@@ -43,7 +44,7 @@ def create_optimizer(opt, learning_rate, optimizer_args=None, decay=None,
     elif isinstance(learning_rate, (float, int)):
         if learning_rate < 0.0:
             raise ValueError("Learning rate must be >= 0. Got: %s.", learning_rate)
-        learning_rate = ops.convert_to_tensor(learning_rate,dtype=tf.float32,
+        learning_rate = ops.convert_to_tensor(learning_rate, dtype=tf.float32,
                                               name="learning_rate")
         if decay:
             if global_step is None:
@@ -79,8 +80,8 @@ def create_decay(decay, learning_rate, global_step, **kwargs):
         decay = decay.lower()
         if decay in ['polynomial_decay', 'polynomial', 'poly']:
             if 'decay_steps' not in kwargs:
-                raise ValueError('You should specify decay_steps argument for `%s` decay function.'
-                                 % decay)
+                raise ValueError('You should specify decay_steps argument for the `%s`'
+                                 ' decay function.' % decay)
             learning_rate = tf.train.polynomial_decay(learning_rate, global_step, **kwargs)
         elif decay in ['exponential_decay', 'exponential', 'exp']:
             learning_rate = tf.train.exponential_decay(learning_rate, global_step, **kwargs)
@@ -106,9 +107,13 @@ class IncrementalAverage(object):
         self._total = 0.0
         self._counter = 0
 
-    def add(self, other):
-        self._total += other
+    def add(self, value):
+        self._total += value
         self._counter += 1
+
+    def add_batch(self, batch):
+        self._total += np.sum(batch)
+        self._counter += len(batch)
 
     def compute_average(self):
         return self._total / (self._counter or 1)

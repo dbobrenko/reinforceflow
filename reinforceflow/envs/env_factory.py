@@ -17,7 +17,7 @@ class EnvFactory(object):
         Args:
             env: String or gym.Wrapper environment subclass.
             stack_len (int): Number of previous frames to stack to the current.
-                             Used for the agents without short-term memory.
+                             Used for the agents without short-term sumtree.
             action_repeat (int): Number of frames to skip with last action repeated.
             random_start (int): (TODO) Determines the max number of randomly skipped frames,
                                 see Mnih et al., 2015.
