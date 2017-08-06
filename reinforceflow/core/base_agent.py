@@ -159,7 +159,8 @@ class BaseDQNAgent(BaseDiscreteAgent):
                                               name='action_one_hot')
             # Predict expected future reward for performed action
             q_value = tf.reduce_sum(tf.multiply(self._q, self._action_one_hot), axis=1)
-            self._loss = tf.reduce_mean(tf.square(self._reward - q_value), name='loss')
+            self._td_error = self._reward - q_value
+            self._loss = tf.reduce_mean(tf.square(self._td_error), name='loss')
             self._grads = tf.gradients(self._loss, self._weights)
             if gradient_clip:
                 self._grads, _ = tf.clip_by_global_norm(self._grads, gradient_clip)
@@ -181,7 +182,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
 
         Args:
             episodes (int): Number of episodes.
-            policy (core.Policy): Agent's policy.
+            policy (core.BasePolicy): Agent's policy.
             max_ep_steps (int): Maximum allowed steps per episode.
             render (bool): Enables game screen rendering.
 
@@ -218,19 +219,20 @@ class BaseDQNAgent(BaseDiscreteAgent):
             summarize (bool): Enables TensorBoard summary writing.
         """
         if self._train_op is not None:
-            raise ValueError('Consider calling `build_train_graph` '
+            raise ValueError('Consider calling `_build_train_graph` '
                              'before starting training process.')
 
         return self._train_on_batch(obs, actions, rewards, summarize)
 
     def _train_on_batch(self, obs, actions, rewards, summarize=False):
-        _, summary = self.sess.run([self._train_op, self._summary_op if summarize else self._no_op],
-                                   feed_dict={
-                                       self._obs: obs,
-                                       self._action: actions,
-                                       self._reward: rewards
-                                   })
-        return summary
+        _, td_error, summary = self.sess.run([self._train_op, self._td_error,
+                                              self._summary_op if summarize else self._no_op],
+                                             feed_dict={
+                                                 self._obs: obs,
+                                                 self._action: actions,
+                                                 self._reward: rewards
+                                             })
+        return td_error, summary
 
     def save_weights(self, path, model_name='model.ckpt'):
         if not os.path.exists(path):

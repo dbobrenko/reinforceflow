@@ -189,7 +189,7 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
 
     def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
                            decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
-        # TODO: fix Variable already exists bug when creating the 2nd agent in the same scope
+        # TODO: fix Variable already exists bug while creating the 2nd agent in the same scope
         with tf.variable_scope(self._scope + 'optimizer'):
             self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate,
                                                        optimizer_args=optimizer_args,
@@ -198,7 +198,8 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
             self._action_one_hot = tf.one_hot(self._action, self.env.action_shape, 1.0, 0.0,
                                               name='action_one_hot')
             q_value = tf.reduce_sum(tf.multiply(self._q, self._action_one_hot), axis=1)
-            self._loss = tf.reduce_mean(tf.square(self._reward - q_value), name='loss')
+            self._td_error = self._reward - q_value
+            self._loss = tf.reduce_mean(tf.square(self._td_error), name='loss')
             self._grads = tf.gradients(self._loss, self._weights)
             if gradient_clip:
                 self._grads, _ = tf.clip_by_global_norm(self._grads, gradient_clip)
@@ -263,8 +264,8 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
             summarize = (term
                          and self.log_freq
                          and self.global_agent.obs_counter - prev_step > self.log_freq)
-            summary_str = self._train_on_batch(np.vstack(batch_obs), batch_actions,
-                                               batch_rewards, summarize)
+            _, summary_str = self._train_on_batch(np.vstack(batch_obs), batch_actions,
+                                                  batch_rewards, summarize)
             if summarize:
                 prev_step = self.global_agent.obs_counter
                 train_r = ep_reward.reset()

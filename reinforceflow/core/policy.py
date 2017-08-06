@@ -5,17 +5,17 @@ from __future__ import print_function
 import random
 
 
-class Policy(object):
+class BasePolicy(object):
     def select_action(self, *args, **kwargs):
         raise NotImplementedError
 
 
-class GreedyPolicy(Policy):
+class GreedyPolicy(BasePolicy):
     def select_action(self, env, prediction):
         return env.prepare_action(prediction)
 
 
-class EGreedyPolicy(Policy):
+class EGreedyPolicy(BasePolicy):
     def __init__(self, eps_start, eps_final, anneal_steps):
         self._start = eps_start
         self._final = eps_final
