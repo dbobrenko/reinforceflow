@@ -194,7 +194,7 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
             self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate,
                                                        optimizer_args=optimizer_args,
                                                        decay=decay, decay_args=decay_args,
-                                                       global_step=self.global_step)
+                                                       global_step=self.global_agent.global_step)
             self._action_one_hot = tf.one_hot(self._action, self.env.action_shape, 1.0, 0.0,
                                               name='action_one_hot')
             q_value = tf.reduce_sum(tf.multiply(self._q, self._action_one_hot), axis=1)

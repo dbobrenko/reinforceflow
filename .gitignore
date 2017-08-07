@@ -1,4 +1,6 @@
 .idea
 drafts/
+__pycache__/
+.cache/
 *.pyc
 NOTES.md
