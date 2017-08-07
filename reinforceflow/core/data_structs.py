@@ -7,6 +7,7 @@ class SumTree(object):
     """This code partially based on the sum tree realization from:
        https://github.com/jaara/AI-blog/blob/master/SumTree.py"""
     def __init__(self, capacity, default_priority=0):
+        self.size = 0
         self._capacity = capacity
         self._tree = [default_priority] * (2*capacity - 1)
         self._current_idx = 0
@@ -42,6 +43,7 @@ class SumTree(object):
         idx = self._current_idx + self._capacity - 1
         self._update(idx, priority)
         self._current_idx += 1
+        self.size = min(self.size + 1, self._capacity)
         if self._current_idx >= self._capacity:
             self._current_idx = 0
 
@@ -49,8 +51,8 @@ class SumTree(object):
         if s > self.sum():
             s = self.sum()
         idx = self._retrieve(0, s) - self._capacity + 1
-        if idx > self._current_idx - 1:
-            idx = self._current_idx - 1
+        if idx >= self.size:
+            idx = self.size - 1
         return idx
 
     def __getitem__(self, idx):

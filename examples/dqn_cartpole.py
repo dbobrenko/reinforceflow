@@ -27,5 +27,5 @@ agent.train(max_steps=steps,
             log_dir='/tmp/reinforceflow/double_dqn/%s/rms' % env,
             target_freq=2000,
             experience=ExperienceReplay(capacity=20000, batch_size=32, min_size=1024),
-            # experience=ExperienceReplay(capacity=20000, batch_size=32, min_size=1024),
+            # experience=ProportionalReplay(capacity=20000, batch_size=32, min_size=1024),
             policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=20000))
