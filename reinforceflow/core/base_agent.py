@@ -85,8 +85,9 @@ class BaseDQNAgent(BaseDiscreteAgent):
         self._no_op = tf.no_op()
         self.opt = None
         self.sess = None
-        self._action = None
-        self._reward = None
+        self._action_ph = None
+        self._reward_ph = None
+        self._term_ph = None
         self._obs = None
         self._q = None
         self._weights = None
@@ -95,7 +96,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
         self._target_weights = None
         self._target_update = None
         self._lr = None
-        self._action_one_hot = None
+        self._action_onehot = None
         self._loss = None
         self._grads = None
         self._grads_vars = None
@@ -110,8 +111,8 @@ class BaseDQNAgent(BaseDiscreteAgent):
             logger.warn("The inference graph has already been built. Skipping..")
             return
         with tf.variable_scope(self._scope + 'network') as scope:
-            self._action = tf.placeholder('int32', [None], name='action')
-            self._reward = tf.placeholder('float32', [None], name='reward')
+            self._action_ph = tf.placeholder('int32', [None], name='action')
+            self._reward_ph = tf.placeholder('float32', [None], name='reward')
             self._obs, self._q, _ = self.net_fn(input_shape=[None] + env.observation_shape,
                                                 output_size=env.action_shape)
             self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
@@ -135,47 +136,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
             saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
                               When exceeds, overwrites the most earliest checkpoints.
         """
-        if self._train_op is not None:
-            logger.warn("The training graph has already been built. Skipping.")
-            return
-        with tf.variable_scope(self._scope + 'target_network') as scope:
-            self._target_obs, self._target_q, _ = \
-                self.net_fn(input_shape=[None] + self.env.observation_shape,
-                            output_size=self.env.action_shape)
-            self._target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                     scope.name)
-            self._target_update = [self._target_weights[i].assign(self._weights[i])
-                                   for i in range(len(self._target_weights))]
-
-        with tf.variable_scope(self._scope + 'optimizer'):
-            self.global_step = tf.Variable(0, trainable=False, name='global_step')
-            self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
-            self._obs_counter_inc = self._obs_counter.assign_add(1, use_locking=True)
-            self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate,
-                                                       optimizer_args=optimizer_args,
-                                                       decay=decay, decay_args=decay_args,
-                                                       global_step=self.global_step)
-            self._action_one_hot = tf.one_hot(self._action, self.env.action_shape, 1.0, 0.0,
-                                              name='action_one_hot')
-            # Predict expected future reward for performed action
-            q_value = tf.reduce_sum(tf.multiply(self._q, self._action_one_hot), axis=1)
-            self._td_error = self._reward - q_value
-            self._loss = tf.reduce_mean(tf.square(self._td_error), name='loss')
-            self._grads = tf.gradients(self._loss, self._weights)
-            if gradient_clip:
-                self._grads, _ = tf.clip_by_global_norm(self._grads, gradient_clip)
-            self._grads_vars = list(zip(self._grads, self._weights))
-            self._train_op = self.opt.apply_gradients(self._grads_vars,
-                                                      global_step=self.global_step)
-        self._save_vars |= set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                 self._scope + 'network'))
-        self._save_vars |= set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                 self._scope + 'optimizer'))
-
-        self._save_vars.add(self.global_step)
-        self._save_vars.add(self._obs_counter)
-        self._saver = tf.train.Saver(var_list=list(self._save_vars), max_to_keep=saver_keep)
-        self._summary_op = tf.no_op()
+        pass
 
     def test(self, episodes, policy=GreedyPolicy(), max_ep_steps=int(1e5), render=False):
         """Tests agent's performance with specified policy on a given number of episodes.
@@ -208,31 +169,6 @@ class BaseDQNAgent(BaseDiscreteAgent):
 
     def train(self, **kwargs):
         raise NotImplementedError
-
-    def train_on_batch(self, obs, actions, rewards, summarize=False):
-        """Trains agent on given transitions batch.
-
-        Args:
-            obs (nd.array): Input observations with shape=[batch, height, width, channels].
-            actions (list): Actions.
-            rewards (list): Rewards for each action.
-            summarize (bool): Enables TensorBoard summary writing.
-        """
-        if self._train_op is not None:
-            raise ValueError('Consider calling `_build_train_graph` '
-                             'before starting training process.')
-
-        return self._train_on_batch(obs, actions, rewards, summarize)
-
-    def _train_on_batch(self, obs, actions, rewards, summarize=False):
-        _, td_error, summary = self.sess.run([self._train_op, self._td_error,
-                                              self._summary_op if summarize else self._no_op],
-                                             feed_dict={
-                                                 self._obs: obs,
-                                                 self._action: actions,
-                                                 self._reward: rewards
-                                             })
-        return td_error, summary
 
     def save_weights(self, path, model_name='model.ckpt'):
         if not os.path.exists(path):

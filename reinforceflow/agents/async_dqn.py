@@ -59,6 +59,53 @@ class AsyncDQNAgent(BaseDQNAgent):
                 ]
         self.writer.add_summary(tf.Summary(value=logs), global_step=obs_step)
 
+    def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
+                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+        """Builds training graph.
+
+        Args:
+            optimizer: An optimizer name string or class.
+            learning_rate (float or Tensor): Optimizer's learning rate.
+            optimizer_args (dict): Keyword arguments used for optimizer creation.
+            decay (function): Learning rate decay.
+                              Expects tensorflow decay function or function name string.
+                              Available name strings: 'polynomial', 'exponential'.
+                              To disable, pass None.
+            decay_args (dict): Keyword arguments, passed to the decay function.
+            gradient_clip (float): Norm gradient clipping.
+                                   To disable, pass False or None.
+            saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
+                              When exceeds, overwrites the most earliest checkpoints.
+        """
+        if self._train_op is not None:
+            logger.warn("The training graph has already been built. Skipping.")
+            return
+        with tf.variable_scope(self._scope + 'target_network') as scope:
+            self._target_obs, self._target_q, _ = \
+                self.net_fn(input_shape=[None] + self.env.observation_shape,
+                            output_size=self.env.action_shape)
+            self._target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                     scope.name)
+            self._target_update = [self._target_weights[i].assign(self._weights[i])
+                                   for i in range(len(self._target_weights))]
+
+        with tf.variable_scope(self._scope + 'optimizer'):
+            self.global_step = tf.Variable(0, trainable=False, name='global_step')
+            self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
+            self._obs_counter_inc = self._obs_counter.assign_add(1, use_locking=True)
+            self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate,
+                                                       optimizer_args=optimizer_args,
+                                                       decay=decay, decay_args=decay_args,
+                                                       global_step=self.global_step)
+        self._save_vars |= set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                 self._scope + 'network'))
+        self._save_vars |= set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                 self._scope + 'optimizer'))
+        self._save_vars.add(self.global_step)
+        self._save_vars.add(self._obs_counter)
+        self._saver = tf.train.Saver(var_list=list(self._save_vars), max_to_keep=saver_keep)
+        self._summary_op = tf.no_op()
+
     def train(self,
               num_threads,
               steps,
@@ -151,7 +198,7 @@ class AsyncDQNAgent(BaseDQNAgent):
         for agent in thread_agents:
             agent.close()
 
-    def train_on_batch(self, obs, actions, rewards, summarize=False):
+    def train_on_batch(self, obs, actions, rewards, obs_next, term, summarize=False):
         raise NotImplementedError('Training on batch is not supported. Use `train` method instead.')
 
 
@@ -191,14 +238,10 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
                            decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
         # TODO: fix Variable already exists bug while creating the 2nd agent in the same scope
         with tf.variable_scope(self._scope + 'optimizer'):
-            self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate,
-                                                       optimizer_args=optimizer_args,
-                                                       decay=decay, decay_args=decay_args,
-                                                       global_step=self.global_agent.global_step)
-            self._action_one_hot = tf.one_hot(self._action, self.env.action_shape, 1.0, 0.0,
-                                              name='action_one_hot')
-            q_value = tf.reduce_sum(tf.multiply(self._q, self._action_one_hot), axis=1)
-            self._td_error = self._reward - q_value
+            self._action_onehot = tf.one_hot(self._action_ph, self.env.action_shape, 1.0, 0.0,
+                                             name='action_one_hot')
+            q_selected = tf.reduce_sum(self._q * self._action_onehot, 1)
+            self._td_error = self._reward_ph - q_selected
             self._loss = tf.reduce_mean(tf.square(self._td_error), name='loss')
             self._grads = tf.gradients(self._loss, self._weights)
             if gradient_clip:
@@ -219,7 +262,7 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
             else:
                 logger.warn('Cannot create summary for observation with shape %s'
                             % self.env.obs_shape)
-            tf.summary.histogram('action', self._action_one_hot)
+            tf.summary.histogram('action', self._action_onehot)
             tf.summary.histogram('reward_per_action', self._q)
             tf.summary.scalar('loss', self._loss)
             self._summary_op = tf.summary.merge(tf.get_collection(tf.GraphKeys.SUMMARIES,
@@ -228,6 +271,16 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
     def _sync_global(self):
         if self._sync_op is not None:
             self.sess.run(self._sync_op)
+
+    def _train_on_batch(self, obs, actions, rewards, summarize=False):
+        _, summary = self.sess.run([self._train_op,
+                                    self._summary_op if summarize else self._no_op],
+                                   feed_dict={
+                                       self._obs: obs,
+                                       self._action_ph: actions,
+                                       self._reward_ph: rewards
+                                   })
+        return summary
 
     def run(self):
         ep_reward = misc.IncrementalAverage()
@@ -254,7 +307,6 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
                 batch_actions.append(action)
             expected_reward = 0
             if not term:
-                # TODO: Clip expected reward?
                 expected_reward = np.max(self.global_agent.target_predict(obs))
                 ep_q.add(expected_reward)
             else:
@@ -264,8 +316,8 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
             summarize = (term
                          and self.log_freq
                          and self.global_agent.obs_counter - prev_step > self.log_freq)
-            _, summary_str = self._train_on_batch(np.vstack(batch_obs), batch_actions,
-                                                  batch_rewards, summarize)
+            summary_str = self._train_on_batch(np.vstack(batch_obs), batch_actions,
+                                               batch_rewards, summarize)
             if summarize:
                 prev_step = self.global_agent.obs_counter
                 train_r = ep_reward.reset()
