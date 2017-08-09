@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-# This try-except block needs only if reinforceflow isn't installed
 try:
     import reinforceflow
 except ImportError:
