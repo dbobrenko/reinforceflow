@@ -11,13 +11,13 @@ except ImportError:
     import reinforceflow
 from reinforceflow.agents.dqn import DQNAgent
 from reinforceflow.core import ExperienceReplay
-from reinforceflow.nets import dqn
+from reinforceflow.nets import dueling_dqn
 from reinforceflow.core import EGreedyPolicy
 from reinforceflow.envs import EnvFactory
-reinforceflow.set_random_seed(321)
+reinforceflow.set_random_seed(444)
 
 steps = 10000000
-env_name = 'Breakout-v0'
+env_name = 'SpaceInvaders-v0'
 env = EnvFactory.make(env_name, use_smart_wrap=True)
 optimizer_args = {'momentum': 0.95, 'epsilon': 0.01}
 decay_args = {'power': 1.0, 'decay_steps': steps}
@@ -28,7 +28,7 @@ decay_args = {'power': 1.0, 'decay_steps': steps}
 replay_size = 20000
 
 
-agent = DQNAgent(env, net_fn=dqn, use_double=True, use_gpu=True)
+agent = DQNAgent(env, net_fn=dueling_dqn, use_double=False, use_gpu=True)
 agent.train(max_steps=steps,
             render=False,
             optimizer='rms',
@@ -36,7 +36,7 @@ agent.train(max_steps=steps,
             optimizer_args=optimizer_args,
             decay='poly',
             decay_args=decay_args,
-            log_dir='/tmp/reinforceflow/double_dqn/%s/rms_paper/' % env_name,
+            log_dir='/tmp/reinforceflow/dueling_dqn/%s/rms_paper/' % env_name,
             policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=1000000),
             experience=ExperienceReplay(capacity=replay_size, min_size=20000, batch_size=32),
             log_freq=2000)
