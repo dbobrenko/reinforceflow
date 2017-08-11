@@ -59,8 +59,8 @@ class AsyncDQNAgent(BaseDQNAgent):
                 ]
         self.writer.add_summary(tf.Summary(value=logs), global_step=obs_step)
 
-    def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
-                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+    def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
+                          decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
         """Builds training graph.
 
         Args:
@@ -130,9 +130,9 @@ class AsyncDQNAgent(BaseDQNAgent):
         envs = []
         if not isinstance(epsilon_pool, (list, tuple, np.ndarray)):
             epsilon_pool = list(epsilon_pool)
-        self._build_train_graph(optimizer, learning_rate, optimizer_args=optimizer_args,
-                                decay=decay, decay_args=decay_args,
-                                gradient_clip=gradient_clip, saver_keep=saver_keep)
+        self.build_train_graph(optimizer, learning_rate, optimizer_args=optimizer_args,
+                               decay=decay, decay_args=decay_args,
+                               gradient_clip=gradient_clip, saver_keep=saver_keep)
         for t in range(num_threads):
             eps_min = random.choice(epsilon_pool)
             logger.debug("Sampling minimum epsilon = %0.2f for Thread-Learner #%d." % (eps_min, t))
@@ -224,25 +224,29 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
         super(_ThreadDQNLearner, self).__init__(env=env, net_fn=net_fn, name=name)
         self.global_agent = global_agent
         self.sess = global_agent.sess
+        self._sync_op = None
         self._build_inference_graph(self.env)
-        self._build_train_graph(optimizer, learning_rate, optimizer_args, decay, decay_args,
-                                gradient_clip, saver_keep)
+        self.build_train_graph(optimizer, learning_rate, optimizer_args, decay, decay_args,
+                               gradient_clip, saver_keep)
         self.steps = steps
         self.target_freq = target_freq
         self.policy = policy
         self.log_freq = log_freq
         self.gamma = gamma
         self.batch_size = batch_size
+        self._ep_reward = misc.IncrementalAverage()
+        self._ep_q = misc.IncrementalAverage()
+        self._reward_accum = 0
 
-    def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
-                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+    def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
+                          decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
         # TODO: fix Variable already exists bug while creating the 2nd agent in the same scope
         with tf.variable_scope(self._scope + 'optimizer'):
             self._action_onehot = tf.one_hot(self._action_ph, self.env.action_shape, 1.0, 0.0,
                                              name='action_one_hot')
             q_selected = tf.reduce_sum(self._q * self._action_onehot, 1)
-            self._td_error = self._reward_ph - q_selected
-            self._loss = tf.reduce_mean(tf.square(self._td_error), name='loss')
+            td_error = self._reward_ph - q_selected
+            self._loss = tf.reduce_mean(tf.square(td_error), name='loss')
             self._grads = tf.gradients(self._loss, self._weights)
             if gradient_clip:
                 self._grads, _ = tf.clip_by_global_norm(self._grads, gradient_clip)
@@ -272,9 +276,16 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
         if self._sync_op is not None:
             self.sess.run(self._sync_op)
 
-    def _train_on_batch(self, obs, actions, rewards, summarize=False):
-        _, summary = self.sess.run([self._train_op,
-                                    self._summary_op if summarize else self._no_op],
+    def _train_on_batch(self, obs, actions, rewards, obs_next, term, summarize=False):
+        expected_reward = 0
+        if not term:
+            expected_reward = np.max(self.global_agent.target_predict(obs_next))
+            self._ep_q.add(expected_reward)
+        else:
+            self._ep_reward.add(self._reward_accum)
+            self._reward_accum = 0
+        rewards = discount_rewards(rewards, self.gamma, expected_reward)
+        _, summary = self.sess.run([self._train_op, self._summary_op if summarize else self._no_op],
                                    feed_dict={
                                        self._obs: obs,
                                        self._action_ph: actions,
@@ -283,9 +294,9 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
         return summary
 
     def run(self):
-        ep_reward = misc.IncrementalAverage()
-        ep_q = misc.IncrementalAverage()
-        reward_accum = 0
+        self._ep_reward.reset()
+        self._ep_q.reset()
+        self._reward_accum = 0
         prev_step = self.global_agent.obs_counter
         obs = self.env.reset()
         term = True
@@ -301,27 +312,19 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
                 batch_obs.append(obs)
                 action = self.policy.select_action(self.env, reward_per_action, current_step)
                 obs, reward, term, info = self.env.step(action)
-                reward_accum += reward
+                self._reward_accum += reward
                 reward = np.clip(reward, -1, 1)
                 batch_rewards.append(reward)
                 batch_actions.append(action)
-            expected_reward = 0
-            if not term:
-                expected_reward = np.max(self.global_agent.target_predict(obs))
-                ep_q.add(expected_reward)
-            else:
-                ep_reward.add(reward_accum)
-                reward_accum = 0
-            batch_rewards = discount_rewards(batch_rewards, self.gamma, expected_reward)
-            summarize = (term
-                         and self.log_freq
-                         and self.global_agent.obs_counter - prev_step > self.log_freq)
+            write_summary = (term
+                             and self.log_freq
+                             and self.global_agent.obs_counter - prev_step > self.log_freq)
             summary_str = self._train_on_batch(np.vstack(batch_obs), batch_actions,
-                                               batch_rewards, summarize)
-            if summarize:
+                                               batch_rewards, obs, term, write_summary)
+            if write_summary:
                 prev_step = self.global_agent.obs_counter
-                train_r = ep_reward.reset()
-                train_q = ep_q.reset()
+                train_r = self._ep_reward.reset()
+                train_q = self._ep_q.reset()
                 logger.info("%s on-policy eval: Average R: %.2f. Average maxQ: %.2f. Step: %d. "
                             % (self._scope, train_r, train_q, prev_step))
                 if summary_str:

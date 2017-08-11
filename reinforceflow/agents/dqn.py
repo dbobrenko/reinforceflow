@@ -34,15 +34,17 @@ class DQNAgent(BaseDQNAgent):
         self._build_inference_graph(self.env)
         self.sess.run(tf.global_variables_initializer())
         self._use_double = use_double
+        self._td_error = None
 
-    def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None, gamma=0.99,
-                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+    def build_train_graph(self, optimizer, learning_rate, optimizer_args=None, gamma=0.99,
+                          decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
         """Builds training graph.
 
         Args:
             optimizer: An optimizer name string or class.
             learning_rate (float or Tensor): Optimizer's learning rate.
             optimizer_args (dict): Keyword arguments used for optimizer creation.
+            gamma: (float) Reward discount factor.
             decay (function): Learning rate decay.
                               Expects tensorflow decay function or function name string.
                               Available name strings: 'polynomial', 'exponential'.
@@ -115,7 +117,7 @@ class DQNAgent(BaseDQNAgent):
         tf.summary.histogram('agent/reward_per_action', self._q)
         tf.summary.scalar('agent/learning_rate', self._lr)
         tf.summary.scalar('metrics/loss', self._loss)
-        tf.summary.scalar('metrics/train_q', q_next_max),
+        tf.summary.scalar('metrics/train_q', tf.reduce_mean(q_next_max))
         self._summary_op = tf.summary.merge_all()
         self._init_op = tf.global_variables_initializer()
 
@@ -220,7 +222,7 @@ class DQNAgent(BaseDQNAgent):
               render=False,
               gamma=0.99,
               target_freq=10000,
-              log_freq=2000,
+              log_freq=10000,
               saver_keep=10):
         """Starts training process.
 
@@ -247,8 +249,8 @@ class DQNAgent(BaseDQNAgent):
             saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
                         When exceeds, overwrites the most earliest checkpoints.
         """
-        self._build_train_graph(optimizer, learning_rate, optimizer_args, gamma,
-                                decay, decay_args, gradient_clip, saver_keep)
+        self.build_train_graph(optimizer, learning_rate, optimizer_args, gamma,
+                               decay, decay_args, gradient_clip, saver_keep)
         try:
             self._train(max_steps, log_dir, render, target_freq, experience, policy, log_freq)
             logger.info('Training finished.')

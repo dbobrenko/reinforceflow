@@ -103,6 +103,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
         self._train_op = None
         self._saver = None
         self._summary_op = None
+        self._obs_counter_inc = None
         self._init_op = None
         self._save_vars = set()
 
@@ -118,8 +119,8 @@ class BaseDQNAgent(BaseDiscreteAgent):
             self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                               scope.name)
 
-    def _build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
-                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+    def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
+                          decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
         """Builds training graph.
 
         Args:
@@ -136,7 +137,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
             saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
                               When exceeds, overwrites the most earliest checkpoints.
         """
-        pass
+        raise NotImplementedError
 
     def test(self, episodes, policy=GreedyPolicy(), max_ep_steps=int(1e5), render=False):
         """Tests agent's performance with specified policy on a given number of episodes.
@@ -169,6 +170,12 @@ class BaseDQNAgent(BaseDiscreteAgent):
 
     def train(self, **kwargs):
         raise NotImplementedError
+
+    def _train_on_batch(self, obs, actions, rewards, obs_next, term, summarize=False):
+        raise NotImplementedError
+
+    def train_on_batch(self, *args, **kwargs):
+        return self._train_on_batch(*args, **kwargs)
 
     def save_weights(self, path, model_name='model.ckpt'):
         if not os.path.exists(path):
