@@ -37,8 +37,8 @@ python examples/dqn_cartpole.py
   - [x] [DQN] Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
   - [x] Double Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
   - [x] Asynchronous N-step Q-Learning ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/async_dqn.py))
-  - [x] Prioritized Proportional Experience Replay ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/core/replay.py))
-  - [ ] Dueling Deep Q-Network
+  - [x] Prioritized Proportional Experience Replay ([in progress](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/core/replay.py))
+  - [x] Dueling Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/nets.py))
   - [ ] [A3C] Asynchronous Advantage Actor-Critic
   - [ ] Stochastic Policy Gradients
 
