@@ -113,7 +113,6 @@ class AsyncDQNAgent(BaseDQNAgent):
               optimizer,
               learning_rate,
               log_dir,
-              epsilon_steps,
               target_freq,
               log_freq,
               optimizer_args=None,
@@ -131,8 +130,9 @@ class AsyncDQNAgent(BaseDQNAgent):
         thread_agents = []
         envs = []
 
-        if isinstance(policy, (list, tuple, np.ndarray)) and len(policy) != num_threads:
-            raise ValueError("Amount of policies should be equal to the amount of threads.")
+        if isinstance(policy, (list, tuple, np.ndarray)):
+            if len(policy) != num_threads:
+                raise ValueError("Amount of policies should be equal to the amount of threads.")
         else:
             policy = [copy.deepcopy(policy) for _ in range(num_threads)]
 
