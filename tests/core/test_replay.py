@@ -23,7 +23,7 @@ def test_replay_sample():
     for i in range(0, 10*cap, 10):
         replay.add(obs=i, action=i+1, reward=i+2, obs_next=i+10, term=i % 20)
     for _ in range(10):
-        obs, action, reward, obs_next, term, idx = replay.sample()
+        obs, action, reward, obs_next, term, idx, importance = replay.sample()
         for o, a, r, o_next, t, i in zip(obs, action, reward, obs_next, term, idx):
             assert a - 1 == o
             assert r - 2 == o
@@ -39,7 +39,7 @@ def test_replay_sample_term():
     replay = ExperienceReplay(capacity=cap, min_size=cap, batch_size=batch_size)
     for i in range(cap):
         replay.add(obs=i, action=0, reward=0, obs_next=i+1, term=i % 5 == 0)
-    obs, a, r, obs_next, terms, idxs = replay.sample()
+    obs, a, r, obs_next, terms, idxs, importance = replay.sample()
     assert len(obs) == batch_size
     assert len(obs_next) == batch_size
     assert len(a) == batch_size
@@ -65,7 +65,7 @@ def test_prop_replay_sample():
     replay = ProportionalReplay(capacity=cap, min_size=cap, batch_size=batch_size, alpha=1.0)
     for i in range(2*cap):
         replay.add(obs=i, action=0, reward=0, obs_next=i+1, term=False, priority=i)
-    obs, a, r, obs_next, terms, idxs = replay.sample()
+    obs, a, r, obs_next, terms, idxs, importance = replay.sample()
     assert len(obs) == batch_size
     assert len(obs_next) == batch_size
     assert len(a) == batch_size
@@ -86,7 +86,7 @@ def test_prop_replay_distribution():
     for p in priors:
         replay.add(obs=p, action=0, reward=0, obs_next=0, term=False, priority=p)
     for i in range(1000):
-        obs, a, r, obs_next, terms, idxs = replay.sample()
+        obs, a, r, obs_next, terms, idxs, importance = replay.sample()
         for o in obs:
             received_priors[float(o)] += 1
     received_priors = np.asarray(list(received_priors)) / s
@@ -105,7 +105,7 @@ def test_prop_replay_update():
         replay.add(obs=p, action=0, reward=0, obs_next=0, term=False)
     replay.update(list(range(1000)), priors)
     for i in range(1000):
-        obs, a, r, obs_next, terms, idxs = replay.sample()
+        obs, a, r, obs_next, terms, idxs, importance = replay.sample()
         for o in obs:
             received_priors[float(o)] += 1
     received_priors = np.asarray(list(received_priors)) / s

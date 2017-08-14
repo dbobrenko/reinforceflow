@@ -4,6 +4,7 @@ from __future__ import division
 
 import time
 import random
+import copy
 from threading import Thread
 
 from six.moves import range  # pylint: disable=redefined-builtin
@@ -119,24 +120,26 @@ class AsyncDQNAgent(BaseDQNAgent):
               gradient_clip=40.0,
               decay=None,
               decay_args=None,
-              epsilon_pool=(0.1, 0.01, 0.5),
+              policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=20000),
               gamma=0.99,
               batch_size=32,
               render=False,
-              saver_keep=10):
+              saver_keep=10,
+              **kwargs):
         if num_threads < 1:
             raise ValueError("Number of threads must be >= 1 (Got: %s)." % num_threads)
         thread_agents = []
         envs = []
-        if not isinstance(epsilon_pool, (list, tuple, np.ndarray)):
-            epsilon_pool = list(epsilon_pool)
+
+        if isinstance(policy, (list, tuple, np.ndarray)) and len(policy) != num_threads:
+            raise ValueError("Amount of policies should be equal to the amount of threads.")
+        else:
+            policy = [copy.deepcopy(policy) for _ in range(num_threads)]
+
         self.build_train_graph(optimizer, learning_rate, optimizer_args=optimizer_args,
                                decay=decay, decay_args=decay_args,
                                gradient_clip=gradient_clip, saver_keep=saver_keep)
         for t in range(num_threads):
-            eps_min = random.choice(epsilon_pool)
-            logger.debug("Sampling minimum epsilon = %0.2f for Thread-Learner #%d." % (eps_min, t))
-            policy = EGreedyPolicy(eps_start=1.0, eps_final=eps_min, anneal_steps=epsilon_steps)
             env = self.env.copy()
             envs.append(env)
             agent = _ThreadDQNLearner(env=env,
@@ -146,7 +149,7 @@ class AsyncDQNAgent(BaseDQNAgent):
                                       optimizer=optimizer,
                                       learning_rate=learning_rate,
                                       target_freq=target_freq,
-                                      policy=policy,
+                                      policy=policy[t],
                                       log_freq=log_freq,
                                       optimizer_args=optimizer_args,
                                       decay=decay,

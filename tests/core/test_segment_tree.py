@@ -4,16 +4,19 @@ from __future__ import division
 
 import numpy as np
 import numpy.testing as npt
-from reinforceflow.core import SumTree
-# TODO: add tests for SumTree.update
+from reinforceflow.core import SumTree, MinTree
 
 
 def test_sumtree_sum():
-    size = 100000
-    tree = SumTree(size)
-    for i in range(size):
+    capacity = 100000
+    dataset = list(range(capacity))
+    dataset_actual = list(range(capacity, 2*capacity))
+    tree = SumTree(capacity)
+    for i in dataset:
         tree.append(i)
-    assert tree.sum() == sum(range(size))
+    for i in dataset_actual:
+        tree.append(i)
+    assert tree.sum() == sum(dataset_actual)
 
 
 def test_sumtree_find_idx():
@@ -39,3 +42,16 @@ def test_sumtree_distribution():
         received_priors[idx] += 1
     received_priors = received_priors / s
     npt.assert_almost_equal(expected_priors, received_priors, decimal=4)
+
+
+def test_mintree_min():
+    capacity = 100000
+    dataset = list(range(capacity))
+    dataset_actual = list(range(capacity, 2*capacity))
+    tree = MinTree(capacity)
+    for i in dataset:
+        tree.append(i)
+    for i in dataset_actual:
+        tree.append(i)
+    assert tree.min() == min(dataset_actual)
+test_mintree_min()

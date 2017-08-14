@@ -10,7 +10,7 @@ from tensorflow.contrib import layers
 def dqn(input_shape, output_size, trainable=True):
     output_size = np.ravel(output_size)
     if len(output_size) != 1:
-        raise ValueError('Output size must be scalar or rank 1 nd.array.')
+        raise ValueError('Output _size must be scalar or rank 1 nd.array.')
     output_size = int(output_size[0])
     end_points = {}
     inputs = tf.placeholder('float32', shape=input_shape, name='inputs')
@@ -110,7 +110,7 @@ def dueling_dqn(input_shape, output_size, dueling_type='mean',
                 advantage_layers=(512,), value_layers=(512,), trainable=True):
     output_size = np.ravel(output_size)
     if len(output_size) != 1:
-        raise ValueError('Output size must be scalar or rank 1 nd.array.')
+        raise ValueError('Output _size must be scalar or rank 1 nd.array.')
     output_size = int(output_size[0])
     end_points = {}
     inputs = tf.placeholder('float32', shape=input_shape, name='inputs')
@@ -152,3 +152,25 @@ def dueling_dqn(input_shape, output_size, dueling_type='mean',
                                           trainable=trainable)
     end_points.update(dueling_endpoints)
     return inputs, out, end_points
+
+
+def dueling_mlp(input_shape, output_size, layer_sizes=(16, 16), dueling_type='mean',
+                advantage_layers=(512,), value_layers=(512,), trainable=True):
+    end_points = {}
+    inputs = tf.placeholder('float32', shape=input_shape, name='inputs')
+    end_points['inputs'] = inputs
+    net = layers.flatten(inputs)
+    for i, units in enumerate(layer_sizes):
+        name = 'fc%d' % i
+        net = layers.fully_connected(net, num_outputs=units, activation_fn=tf.nn.relu,
+                                     trainable=trainable, scope=name)
+        end_points[name] = net
+
+    net, dueling_endpoints = make_dueling(duel_layer=net,
+                                      output_size=output_size,
+                                      dueling_type=dueling_type,
+                                      advantage_layers=advantage_layers,
+                                      value_layers=value_layers,
+                                      trainable=trainable)
+    end_points.update(dueling_endpoints)
+    return inputs, net, end_points

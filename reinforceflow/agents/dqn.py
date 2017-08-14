@@ -34,6 +34,7 @@ class DQNAgent(BaseDQNAgent):
         self._build_inference_graph(self.env)
         self.sess.run(tf.global_variables_initializer())
         self._use_double = use_double
+        self._importance_ph = tf.placeholder('float32', [None], name='importance_sampling')
         self._td_error = None
 
     def build_train_graph(self, optimizer, learning_rate, optimizer_args=None, gamma=0.99,
@@ -54,6 +55,7 @@ class DQNAgent(BaseDQNAgent):
                                    To disable, pass False or None.
             saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
                               When exceeds, overwrites the most earliest checkpoints.
+            replay: Experience replay
         """
         if self._train_op is not None:
             logger.warn("The training graph has already been built. Skipping.")
@@ -89,7 +91,8 @@ class DQNAgent(BaseDQNAgent):
             q_next_max_masked = (1.0 - self._term_ph) * q_next_max
             q_target = self._reward_ph + gamma * q_next_max_masked
             self._td_error = tf.stop_gradient(q_target) - q_selected
-            self._loss = tf.reduce_mean(tf.square(self._td_error), name='loss')
+            td_error_weighted = self._td_error * self._importance_ph
+            self._loss = tf.reduce_mean(tf.square(td_error_weighted), name='loss')
             self._grads = tf.gradients(self._loss, self._weights)
             if gradient_clip:
                 self._grads, _ = tf.clip_by_global_norm(self._grads, gradient_clip)
@@ -148,13 +151,12 @@ class DQNAgent(BaseDQNAgent):
             obs = obs_next
             if replay.is_ready:
                 batch = replay.sample()
-                batch_obs, batch_action, batch_reward, batch_o_next, batch_term, batch_idxs = batch
+                b_obs, b_action, b_reward, b_obs_next, b_term, b_idxs, b_importances = batch
                 summarize = term and log_freq and step - last_step > log_freq
-                td_error, summary_str = self._train_on_batch(batch_obs, batch_action,
-                                                             batch_reward, batch_o_next,
-                                                             batch_term, summarize)
+                td_error, summary_str = self._train_on_batch(b_obs, b_action, b_reward, b_obs_next,
+                                                             b_term, summarize, b_importances)
                 try:
-                    replay.update(batch_idxs, np.abs(td_error))
+                    replay.update(b_idxs, np.abs(td_error))
                 except AttributeError:
                     pass
                 if step % target_freq == target_freq-1:
@@ -196,7 +198,10 @@ class DQNAgent(BaseDQNAgent):
                 obs = self.env.reset()
         writer.close()
 
-    def _train_on_batch(self, obs, actions, rewards, obs_next, term, summarize=False):
+    def _train_on_batch(self, obs, actions, rewards, obs_next,
+                        term, summarize=False, importances=None):
+        if importances is None:
+            importances = [1.0] * len(rewards)
         _, td_error, summary = self.sess.run([self._train_op, self._td_error,
                                               self._summary_op if summarize else self._no_op],
                                              feed_dict={
@@ -204,7 +209,8 @@ class DQNAgent(BaseDQNAgent):
                                                  self._action_ph: actions,
                                                  self._reward_ph: rewards,
                                                  self._target_obs: obs_next,
-                                                 self._term_ph: term
+                                                 self._term_ph: term,
+                                                 self._importance_ph: importances
                                              })
         return td_error, summary
 
@@ -213,7 +219,7 @@ class DQNAgent(BaseDQNAgent):
               optimizer,
               learning_rate,
               log_dir,
-              experience=ExperienceReplay(capacity=20000, min_size=5000, batch_size=32),
+              replay=ExperienceReplay(capacity=20000, min_size=5000, batch_size=32),
               policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=20000),
               optimizer_args=None,
               decay=None,
@@ -223,7 +229,8 @@ class DQNAgent(BaseDQNAgent):
               gamma=0.99,
               target_freq=10000,
               log_freq=10000,
-              saver_keep=10):
+              saver_keep=10,
+              **kwargs):
         """Starts training process.
 
         Args:
@@ -232,7 +239,7 @@ class DQNAgent(BaseDQNAgent):
             learning_rate: (float or Tensor) Optimizer's learning rate.
             log_dir: (str) directory for summary and checkpoints.
                      Continues training, if checkpoint already exists.
-            experience: (core.ExperienceReplay) Experience buffer.
+            replay: (core.ExperienceReplay) Experience buffer.
             policy: (core.BasePolicy) Agent's training policy.
             optimizer_args: (dict) Keyword arguments, used for optimizer creation.
             decay: (function) Learning rate decay.
@@ -252,7 +259,7 @@ class DQNAgent(BaseDQNAgent):
         self.build_train_graph(optimizer, learning_rate, optimizer_args, gamma,
                                decay, decay_args, gradient_clip, saver_keep)
         try:
-            self._train(max_steps, log_dir, render, target_freq, experience, policy, log_freq)
+            self._train(max_steps, log_dir, render, target_freq, replay, policy, log_freq)
             logger.info('Training finished.')
         except KeyboardInterrupt:
             logger.info('Stopping training process...')

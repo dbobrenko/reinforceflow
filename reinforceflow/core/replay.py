@@ -5,7 +5,7 @@ from __future__ import division
 from operator import itemgetter
 import random
 import numpy as np
-from reinforceflow.core.data_structs import SumTree
+from reinforceflow.core.data_structs import SumTree, MinTree
 from reinforceflow import logger
 
 
@@ -13,8 +13,8 @@ class ExperienceReplay(object):
     def __init__(self, capacity, min_size, batch_size):
         if capacity < batch_size:
             logger.warn("Minimum capacity must be higher or equal "
-                        "to the batch size (Got: %s)."
-                        "Setting minimum buffer size to the batch size." % batch_size)
+                        "to the batch _size (Got: %s)."
+                        "Setting minimum buffer _size to the batch _size." % batch_size)
             capacity = batch_size
         self._capacity = capacity
         self._batch_size = batch_size
@@ -50,7 +50,8 @@ class ExperienceReplay(object):
                 np.asarray(gather(self._rewards)),
                 np.vstack(next_obs_gather(self._obs)).squeeze(),
                 np.asarray(gather(self._terms)),
-                rand_idxs)
+                rand_idxs,
+                [1.0] * len(rand_idxs))
 
     @property
     def size(self):
@@ -68,9 +69,10 @@ class ProportionalReplay(ExperienceReplay):
     def __init__(self, capacity, min_size, batch_size, alpha=1.0):
         super(ProportionalReplay, self).__init__(capacity, min_size, batch_size)
         self.sumtree = SumTree(capacity)
+        self.mintree = MinTree(capacity)
         self._alpha = alpha
-        self._epsilon = 0.001
-        self._max_priority = 1.0
+        self._epsilon = 0.00001
+        self._max_priority = 0.0
 
     def _preproc_priority(self, error):
         return (error + self._epsilon) ** self._alpha
@@ -80,6 +82,7 @@ class ProportionalReplay(ExperienceReplay):
             priority = self._max_priority
         super(ProportionalReplay, self).add(obs, action, reward, obs_next, term)
         self.sumtree.append(self._preproc_priority(priority))
+        self.mintree.append(self._preproc_priority(priority))
 
     def sample(self):
         idxs = []
@@ -91,16 +94,29 @@ class ProportionalReplay(ExperienceReplay):
             idxs.append(self.sumtree.find_sum_idx(s))
         gather = itemgetter(*idxs)
         next_obs_gather = itemgetter(*[i + 1 for i in idxs])
+        importances = self._compute_importance(idxs)
         return (np.vstack(gather(self._obs)).squeeze(),
                 np.asarray(gather(self._actions)),
                 np.asarray(gather(self._rewards)),
                 np.vstack(next_obs_gather(self._obs)).squeeze(),
                 np.asarray(gather(self._terms)),
-                idxs)
+                idxs,
+                importances)
+
+    def _compute_importance(self, indexes):
+        importances = [0.0] * len(indexes)
+        if self.mintree.min() == float('inf'):
+            return importances
+        importance_max = (self.mintree.min() / self.sumtree.sum()) * self.sumtree.size
+        for i, idx in enumerate(indexes):
+            prob = self.sumtree[idx] / self.sumtree.sum()
+            importances[i] = (prob * self.sumtree.size) / importance_max
+        return importances
 
     def update(self, indexes, priorities):
         if not isinstance(priorities, np.ndarray):
             priorities = np.asarray(priorities)
+        priorities += self._epsilon
         priorities = self._preproc_priority(priorities)
         for idx, prior in zip(indexes, priorities):
             self._max_priority = max(self._max_priority, prior)
