@@ -12,13 +12,13 @@ except ImportError:
 from reinforceflow.agents.async_dqn import AsyncDQNAgent
 from reinforceflow.envs.env_factory import EnvFactory
 from reinforceflow.core.policy import EGreedyPolicy
-from reinforceflow.nets import dqn
+from reinforceflow.nets import DuelingMLPFactory
 reinforceflow.set_random_seed(555)
 
 env_name = 'SpaceInvaders-v0'
 env = EnvFactory.make(env_name, use_smart_wrap=True)
 steps = 80000000
-agent = AsyncDQNAgent(env, net_fn=dqn, use_gpu=True)
+agent = AsyncDQNAgent(env, net_factory=DuelingMLPFactory(), use_gpu=True)
 policies = [EGreedyPolicy(eps_start=1.0, eps_final=final, anneal_steps=4000000)
             for final in [0.01, 0.01, 0.01, 0.1, 0.1, 0.1, 0.5, 0.5]]
 agent.train(num_threads=8,

@@ -10,15 +10,15 @@ except ImportError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
     import reinforceflow
 from reinforceflow.agents.dqn import DQNAgent
-from reinforceflow.nets import dueling_mlp
+from reinforceflow.nets import DuelingMLPFactory
 from reinforceflow.core.policy import EGreedyPolicy
 from reinforceflow.core.replay import ExperienceReplay, ProportionalReplay
 reinforceflow.set_random_seed(11)
 
 
 env = 'CartPole-v0'
-steps = 40000
-agent = DQNAgent(env, net_fn=dueling_mlp, use_double=False, use_gpu=True)
+steps = 8000
+agent = DQNAgent(env, net_factory=DuelingMLPFactory(), use_double=False, use_gpu=True)
 agent.train(max_steps=steps,
             render=False,
             optimizer='adam',

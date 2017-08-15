@@ -25,14 +25,13 @@ class AsyncDQNAgent(BaseDQNAgent):
 
     See `core.base_agent.BaseDQNAgent.__init__`.
     """
-    def __init__(self, env, net_fn, use_gpu=False, name='AsyncDQN'):
-        super(AsyncDQNAgent, self).__init__(env=env, net_fn=net_fn, name=name)
+    def __init__(self, env, net_factory, use_gpu=False, name='AsyncDQN'):
+        super(AsyncDQNAgent, self).__init__(env=env, net_factory=net_factory, name=name)
         config = tf.ConfigProto(
             device_count={'GPU': use_gpu}
         )
         config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=config)
-        self._build_inference_graph(self.env)
         self.weights = self._weights
         self.request_stop = False
         self._prev_obs_step = None
@@ -82,9 +81,9 @@ class AsyncDQNAgent(BaseDQNAgent):
             logger.warn("The training graph has already been built. Skipping.")
             return
         with tf.variable_scope(self._scope + 'target_network') as scope:
-            self._target_obs, self._target_q, _ = \
-                self.net_fn(input_shape=[None] + self.env.observation_shape,
-                            output_size=self.env.action_shape)
+            self._target_net =\
+                self._net_factory.make(input_shape=[None] + self.env.observation_shape,
+                                       output_size=self.env.action_shape)
             self._target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                                      scope.name)
             self._target_update = [self._target_weights[i].assign(self._weights[i])
@@ -143,7 +142,7 @@ class AsyncDQNAgent(BaseDQNAgent):
             env = self.env.copy()
             envs.append(env)
             agent = _ThreadDQNLearner(env=env,
-                                      net_fn=self.net_fn,
+                                      net_factory=self._net_factory,
                                       global_agent=self,
                                       steps=steps,
                                       optimizer=optimizer,
@@ -208,7 +207,7 @@ class AsyncDQNAgent(BaseDQNAgent):
 class _ThreadDQNLearner(BaseDQNAgent, Thread):
     def __init__(self,
                  env,
-                 net_fn,
+                 net_factory,
                  global_agent,
                  steps,
                  optimizer,
@@ -224,11 +223,10 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
                  batch_size=32,
                  saver_keep=10,
                  name=''):
-        super(_ThreadDQNLearner, self).__init__(env=env, net_fn=net_fn, name=name)
+        super(_ThreadDQNLearner, self).__init__(env=env, net_factory=net_factory, name=name)
         self.global_agent = global_agent
         self.sess = global_agent.sess
         self._sync_op = None
-        self._build_inference_graph(self.env)
         self.build_train_graph(optimizer, learning_rate, optimizer_args, decay, decay_args,
                                gradient_clip, saver_keep)
         self.steps = steps
@@ -247,7 +245,7 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
         with tf.variable_scope(self._scope + 'optimizer'):
             self._action_onehot = tf.one_hot(self._action_ph, self.env.action_shape, 1.0, 0.0,
                                              name='action_one_hot')
-            q_selected = tf.reduce_sum(self._q * self._action_onehot, 1)
+            q_selected = tf.reduce_sum(self.net.inference_op * self._action_onehot, 1)
             td_error = self._reward_ph - q_selected
             self._loss = tf.reduce_mean(tf.square(td_error), name='loss')
             self._grads = tf.gradients(self._loss, self._weights)
@@ -263,14 +261,14 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
             tf.summary.histogram(w.name + '/gradients', grad)
         with tf.variable_scope(self._scope):
             if len(self.env.observation_shape) == 1:
-                tf.summary.histogram('observation', self._obs)
+                tf.summary.histogram('observation', self.net.input_ph)
             elif len(self.env.observation_shape) <= 3:
-                tf.summary.image('observation', self._obs)
+                tf.summary.image('observation', self.net.input_ph)
             else:
                 logger.warn('Cannot create summary for observation with shape %s'
                             % self.env.obs_shape)
             tf.summary.histogram('action', self._action_onehot)
-            tf.summary.histogram('reward_per_action', self._q)
+            tf.summary.histogram('reward_per_action', self.net.inference_op)
             tf.summary.scalar('loss', self._loss)
             self._summary_op = tf.summary.merge(tf.get_collection(tf.GraphKeys.SUMMARIES,
                                                                   self._scope))
@@ -290,7 +288,7 @@ class _ThreadDQNLearner(BaseDQNAgent, Thread):
         rewards = discount_rewards(rewards, self.gamma, expected_reward)
         _, summary = self.sess.run([self._train_op, self._summary_op if summarize else self._no_op],
                                    feed_dict={
-                                       self._obs: obs,
+                                       self.net.input_ph: obs,
                                        self._action_ph: actions,
                                        self._reward_ph: rewards
                                    })

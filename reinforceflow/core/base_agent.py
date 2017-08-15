@@ -64,35 +64,35 @@ class BaseDQNAgent(BaseDiscreteAgent):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def __init__(self, env, net_fn, name=''):
+    def __init__(self, env, net_factory, name=''):
         """Abstract base class for Deep Q-Network agent.
 
         Args:
             env (envs.RawGymWrapper): Environment wrapper.
-            net_fn: Function, takes `input_shape` and `output_size` arguments,
-                    returns tuple(input Tensor, output Tensor, all end point Tensors).
+            net_factory: Network factory, defined in nets file.
 
         Attributes:
             env: Current environment.
-            net_fn: Function, used for building network model.
+            net_factory: Function, used for building network model.
             name: Agent's name prefix.
         """
         super(BaseDQNAgent, self).__init__(env=env)
-        self.net_fn = net_fn
+        self._net_factory = net_factory
         self._scope = '' if not name else name + '/'
+        with tf.variable_scope(self._scope + 'network') as scope:
+            self._action_ph = tf.placeholder('int32', [None], name='action')
+            self._reward_ph = tf.placeholder('float32', [None], name='reward')
+            self.net = self._net_factory.make(input_shape=[None] + self.env.observation_shape,
+                                              output_size=self.env.action_shape)
+            self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                              scope.name)
+        self._no_op = tf.no_op()
         self.global_step = None
         self._obs_counter = None
-        self._no_op = tf.no_op()
         self.opt = None
         self.sess = None
-        self._action_ph = None
-        self._reward_ph = None
         self._term_ph = None
-        self._obs = None
-        self._q = None
-        self._weights = None
-        self._target_obs = None
-        self._target_q = None
+        self._target_net = None
         self._target_weights = None
         self._target_update = None
         self._lr = None
@@ -106,18 +106,6 @@ class BaseDQNAgent(BaseDiscreteAgent):
         self._obs_counter_inc = None
         self._init_op = None
         self._save_vars = set()
-
-    def _build_inference_graph(self, env):
-        if self._q is not None:
-            logger.warn("The inference graph has already been built. Skipping..")
-            return
-        with tf.variable_scope(self._scope + 'network') as scope:
-            self._action_ph = tf.placeholder('int32', [None], name='action')
-            self._reward_ph = tf.placeholder('float32', [None], name='reward')
-            self._obs, self._q, _ = self.net_fn(input_shape=[None] + env.observation_shape,
-                                                output_size=env.action_shape)
-            self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                              scope.name)
 
     def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
@@ -204,10 +192,10 @@ class BaseDQNAgent(BaseDiscreteAgent):
         return self.sess.run(self.global_step)
 
     def predict(self, obs):
-        return self.sess.run(self._q, {self._obs: obs})
+        return self.sess.run(self.net.inference_op, {self.net.input_ph: obs})
 
     def target_predict(self, obs):
-        return self.sess.run(self._target_q, {self._target_obs: obs})
+        return self.sess.run(self._target_net.inference_op, {self._target_net.input_ph: obs})
 
     def target_update(self):
         self.sess.run(self._target_update)

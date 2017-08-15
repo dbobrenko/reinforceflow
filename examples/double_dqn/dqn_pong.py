@@ -11,7 +11,7 @@ except ImportError:
     import reinforceflow
 from reinforceflow.agents.dqn import DQNAgent
 from reinforceflow.core import ExperienceReplay
-from reinforceflow.nets import dqn
+from reinforceflow.nets import DuelingMLPFactory
 from reinforceflow.core import EGreedyPolicy
 from reinforceflow.envs import EnvFactory
 reinforceflow.set_random_seed(321)
@@ -28,7 +28,7 @@ decay_args = {'power': 1.0, 'decay_steps': steps}
 replay_size = 20000
 
 
-agent = DQNAgent(env, net_fn=dqn, use_double=True, use_gpu=True)
+agent = DQNAgent(env, net_factory=DuelingMLPFactory(), use_double=True, use_gpu=True)
 agent.train(max_steps=steps,
             render=False,
             optimizer='rms',

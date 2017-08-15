@@ -10,14 +10,13 @@ import tensorflow as tf
 
 from reinforceflow.core.base_agent import BaseDQNAgent
 from reinforceflow.core import ExperienceReplay
-from reinforceflow.nets import dqn
 from reinforceflow.core import EGreedyPolicy
 from reinforceflow import misc
 from reinforceflow import logger
 
 
 class DQNAgent(BaseDQNAgent):
-    def __init__(self, env, net_fn=dqn, use_double=True, use_gpu=True, name=''):
+    def __init__(self, env, net_factory, use_double=True, use_gpu=True, name=''):
         """Constructs Deep Q-Network agent, based on paper:
         "Human-level control through deep reinforcement learning", Mnih et al., 2015.
 
@@ -25,13 +24,12 @@ class DQNAgent(BaseDQNAgent):
         Args:
             use_double: (bool) Enables Double DQN.
         """
-        super(DQNAgent, self).__init__(env=env, net_fn=net_fn, name=name)
+        super(DQNAgent, self).__init__(env=env, net_factory=net_factory, name=name)
         config = tf.ConfigProto(
             device_count={'GPU': use_gpu}
         )
         config.gpu_options.allow_growth = True
         self.sess = tf.Session(config=config)
-        self._build_inference_graph(self.env)
         self.sess.run(tf.global_variables_initializer())
         self._use_double = use_double
         self._importance_ph = tf.placeholder('float32', [None], name='importance_sampling')
@@ -62,9 +60,9 @@ class DQNAgent(BaseDQNAgent):
             return
         self._term_ph = tf.placeholder('float32', [None], name='term')
         with tf.variable_scope(self._scope + 'target_network') as scope:
-            self._target_obs, self._target_q, _ = \
-                self.net_fn(input_shape=[None] + self.env.observation_shape,
-                            output_size=self.env.action_shape)
+            self._target_net =\
+                self._net_factory.make(input_shape=[None] + self.env.observation_shape,
+                                       output_size=self.env.action_shape)
             self._target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                                      scope.name)
             self._target_update = [self._target_weights[i].assign(self._weights[i])
@@ -81,13 +79,13 @@ class DQNAgent(BaseDQNAgent):
             self._action_onehot = tf.one_hot(self._action_ph, self.env.action_shape, 1.0, 0.0,
                                              name='action_one_hot')
             # Predict expected future reward for performed action
-            q_selected = tf.reduce_sum(self._q * self._action_onehot, 1)
+            q_selected = tf.reduce_sum(self.net.inference_op * self._action_onehot, 1)
             if self._use_double:
-                q_next_online_argmax = tf.arg_max(self._q, 1)
+                q_next_online_argmax = tf.arg_max(self.net.inference_op, 1)
                 q_next_online_onehot = tf.one_hot(q_next_online_argmax, self.env.action_shape, 1.0)
-                q_next_max = tf.reduce_sum(self._target_q * q_next_online_onehot, 1)
+                q_next_max = tf.reduce_sum(self._target_net.inference_op * q_next_online_onehot, 1)
             else:
-                q_next_max = tf.reduce_max(self._target_q, 1)
+                q_next_max = tf.reduce_max(self._target_net.inference_op, 1)
             q_next_max_masked = (1.0 - self._term_ph) * q_next_max
             q_target = self._reward_ph + gamma * q_next_max_masked
             self._td_error = tf.stop_gradient(q_target) - q_selected
@@ -111,13 +109,13 @@ class DQNAgent(BaseDQNAgent):
             tf.summary.histogram(w.name, w)
             tf.summary.histogram(w.name + '/gradients', grad)
         if len(self.env.observation_shape) == 1:
-            tf.summary.histogram('agent/observation', self._obs)
+            tf.summary.histogram('agent/observation', self.net.input_ph)
         elif len(self.env.observation_shape) <= 3:
-            tf.summary.image('agent/observation', self._obs)
+            tf.summary.image('agent/observation', self.net.input_ph)
         else:
             logger.warn('Cannot create summary for observation shape %s' % self.env.obs_shape)
         tf.summary.histogram('agent/action', self._action_onehot)
-        tf.summary.histogram('agent/reward_per_action', self._q)
+        tf.summary.histogram('agent/reward_per_action', self.net.inference_op)
         tf.summary.scalar('agent/learning_rate', self._lr)
         tf.summary.scalar('metrics/loss', self._loss)
         tf.summary.scalar('metrics/train_q', tf.reduce_mean(q_next_max))
@@ -205,10 +203,10 @@ class DQNAgent(BaseDQNAgent):
         _, td_error, summary = self.sess.run([self._train_op, self._td_error,
                                               self._summary_op if summarize else self._no_op],
                                              feed_dict={
-                                                 self._obs: obs,
+                                                 self.net.input_ph: obs,
                                                  self._action_ph: actions,
                                                  self._reward_ph: rewards,
-                                                 self._target_obs: obs_next,
+                                                 self._target_net.input_ph: obs_next,
                                                  self._term_ph: term,
                                                  self._importance_ph: importances
                                              })
