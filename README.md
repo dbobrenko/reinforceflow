@@ -19,17 +19,22 @@ Examples can be found at `examples` directory.
 
 To train **Async N-step DQN on SpaceInvaders**, run:
 ```
-python examples/async_dqn_spaceinv.py
+python examples/async_dqn/adqn_spaceinv.py
 ```
 
 To train **Async N-step DQN on CartPole**, run:
 ```
-python examples/async_dqn_cartpole.py
+python examples/async_dqn/adqn_cartpole.py
 ```
 
 To train **Double DQN on CartPole**, run:
 ```
-python examples/dqn_cartpole.py
+python examples/double_dqn/dqn_cartpole.py
+```
+
+To train **Dueling DQN on CartPole**, run:
+```
+python examples/dueling_dqn/dqn_cartpole.py
 ```
 
 
