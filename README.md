@@ -4,18 +4,18 @@
 
 ReinforceFlow contains a bunch of implementations of the state-of-the-art solutions for RL problems.
 
-ReinforceFlow was initially designed to work with [OpenAI Gym](https://gym.openai.com/) interface and [TensorFlow framework](https://www.tensorflow.org/) for some advanced deep learning stuff.
+ReinforceFlow was initially designed to work with [OpenAI Gym](https://gym.openai.com/) interface and [TensorFlow framework](https://www.tensorflow.org/) for some advanced deep learning stuff. However, there are plans to support more environments in future, as well as custom-made.
 
 :construction: *Note: Project is under heavy development and sometimes it could be unstable. Some of it's components may undergo considerable changes in future.*
 
-## Requirements
+## Requirements & Installation
   1. Python 2.7 or 3.4+;
   2. [OpenAI Gym](https://gym.openai.com/);
   3. `pip install -e .`
 
 
 ## Usage
-Examples can be found at `examples` directory.
+Examples of usage can be found at `examples` directory.
 
 To train **Async N-step DQN on SpaceInvaders**, run:
 ```
