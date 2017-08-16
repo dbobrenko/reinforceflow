@@ -12,7 +12,7 @@ class DQNFactory(object):
         return DQNModel(input_shape, output_size, trainable)
 
 
-class DuelingDQNModelFactory(object):
+class DuelingDQNFactory(object):
     def __init__(self, dueling_type='mean', advantage_layers=(512,), value_layers=(512,)):
         self.dueling_type = dueling_type
         self.advantage_layers = advantage_layers

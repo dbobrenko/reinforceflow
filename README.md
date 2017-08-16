@@ -32,6 +32,11 @@ To train **Double DQN on CartPole**, run:
 python examples/double_dqn/dqn_cartpole.py
 ```
 
+To train **Double DQN on Pong**, run:
+```
+python examples/double_dqn/dqn_pong.py
+```
+
 To train **Dueling DQN on CartPole**, run:
 ```
 python examples/dueling_dqn/dqn_cartpole.py
@@ -39,11 +44,11 @@ python examples/dueling_dqn/dqn_cartpole.py
 
 
 ## Constantly evolving tasks list:
-  - [x] [DQN] Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
+  - [x] Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
   - [x] Double Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
+  - [x] Dueling Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/nets.py))
   - [x] Asynchronous N-step Q-Learning ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/async_dqn.py))
   - [x] Prioritized Proportional Experience Replay ([in progress](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/core/replay.py))
-  - [x] Dueling Deep Q-Network ([implementation](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/nets.py))
   - [ ] [A3C] Asynchronous Advantage Actor-Critic
   - [ ] Stochastic Policy Gradients
 

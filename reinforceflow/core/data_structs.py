@@ -77,7 +77,6 @@ class MinTree(object):
 
     def _propagate(self, idx, change):
         parent = (idx - 1) // 2
-        # self._tree[parent] += change
         self._tree[idx] = change
         left = 2 * parent + 1
         right = left + 1
@@ -100,12 +99,8 @@ class MinTree(object):
         self._update(self._capacity + idx - 1, priority)
 
     def _update(self, idx, priority):
-        # diff = priority - self._tree[idx]
         self._tree[idx] = priority
         self._propagate(idx, priority)
-
-    # def sum(self):
-    #     return self._tree[0]
 
     def min(self):
         return self._tree[0]

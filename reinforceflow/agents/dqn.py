@@ -44,16 +44,15 @@ class DQNAgent(BaseDQNAgent):
             learning_rate (float or Tensor): Optimizer's learning rate.
             optimizer_args (dict): Keyword arguments used for optimizer creation.
             gamma: (float) Reward discount factor.
-            decay (function): Learning rate decay.
+            decay: (function) Learning rate decay.
                               Expects tensorflow decay function or function name string.
                               Available name strings: 'polynomial', 'exponential'.
                               To disable, pass None.
-            decay_args (dict): Keyword arguments, passed to the decay function.
-            gradient_clip (float): Norm gradient clipping.
+            decay_args: (dict) Keyword arguments, passed to the decay function.
+            gradient_clip: (float) Norm gradient clipping.
                                    To disable, pass False or None.
-            saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
+            saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
                               When exceeds, overwrites the most earliest checkpoints.
-            replay: Experience replay
         """
         if self._train_op is not None:
             logger.warn("The training graph has already been built. Skipping.")
@@ -122,7 +121,7 @@ class DQNAgent(BaseDQNAgent):
         self._summary_op = tf.summary.merge_all()
         self._init_op = tf.global_variables_initializer()
 
-    def _train(self, max_steps, log_dir, render, target_freq, replay, policy, log_freq):
+    def _train(self, max_steps, update_freq, log_dir, render, target_freq, replay, policy, log_freq):
         ep_reward = misc.IncrementalAverage()
         reward_accum = 0
         episode = 0
@@ -136,7 +135,7 @@ class DQNAgent(BaseDQNAgent):
         last_obs = self.obs_counter
         step = self.step_counter
         while step < max_steps:
-            self.increment_obs_counter()
+            obs_counter = self.increment_obs_counter()
             step = self.step_counter
             if render:
                 self.env.render()
@@ -147,7 +146,7 @@ class DQNAgent(BaseDQNAgent):
             reward = np.clip(reward, -1, 1)
             replay.add(obs, action, reward, obs_next, term)
             obs = obs_next
-            if replay.is_ready:
+            if replay.is_ready and obs_counter % update_freq == 0:
                 batch = replay.sample()
                 b_obs, b_action, b_reward, b_obs_next, b_term, b_idxs, b_importances = batch
                 summarize = term and log_freq and step - last_step > log_freq
@@ -197,9 +196,9 @@ class DQNAgent(BaseDQNAgent):
         writer.close()
 
     def _train_on_batch(self, obs, actions, rewards, obs_next,
-                        term, summarize=False, importances=None):
-        if importances is None:
-            importances = [1.0] * len(rewards)
+                        term, summarize=False, importance=None):
+        if importance is None:
+            importance = [1.0] * len(rewards)
         _, td_error, summary = self.sess.run([self._train_op, self._td_error,
                                               self._summary_op if summarize else self._no_op],
                                              feed_dict={
@@ -208,7 +207,7 @@ class DQNAgent(BaseDQNAgent):
                                                  self._reward_ph: rewards,
                                                  self._target_net.input_ph: obs_next,
                                                  self._term_ph: term,
-                                                 self._importance_ph: importances
+                                                 self._importance_ph: importance
                                              })
         return td_error, summary
 
@@ -217,6 +216,7 @@ class DQNAgent(BaseDQNAgent):
               optimizer,
               learning_rate,
               log_dir,
+              update_freq=1,
               replay=ExperienceReplay(capacity=20000, min_size=5000, batch_size=32),
               policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=20000),
               optimizer_args=None,
@@ -233,6 +233,7 @@ class DQNAgent(BaseDQNAgent):
 
         Args:
             max_steps: (int) Number of training steps (optimizer steps).
+            update_freq: (int) Optimizer update frequency.
             optimizer: An optimizer string name or class.
             learning_rate: (float or Tensor) Optimizer's learning rate.
             log_dir: (str) directory for summary and checkpoints.
@@ -257,7 +258,8 @@ class DQNAgent(BaseDQNAgent):
         self.build_train_graph(optimizer, learning_rate, optimizer_args, gamma,
                                decay, decay_args, gradient_clip, saver_keep)
         try:
-            self._train(max_steps, log_dir, render, target_freq, replay, policy, log_freq)
+            self._train(max_steps, update_freq, log_dir, render,
+                        target_freq, replay, policy, log_freq)
             logger.info('Training finished.')
         except KeyboardInterrupt:
             logger.info('Stopping training process...')
