@@ -51,9 +51,13 @@ python examples/dueling_dqn/dqn_cartpole.py
   - [x] Prioritized Proportional Experience Replay ([in progress](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/core/replay.py))
   - [ ] [A3C] Asynchronous Advantage Actor-Critic
   - [ ] Stochastic Policy Gradients
+  - [ ] PPO
+  - [ ] TRPO
+  - [ ] A2C
+  - [ ] ACKTR
 
 
 ## Related projects:
   - [OpenAI Baselines](https://github.com/openai/baselines)
-  - [OpenAI rllab](https://github.com/openai/rllab)
   - [Keras-rl](https://github.com/matthiasplappert/keras-rl)
+  - [OpenAI rllab](https://github.com/openai/rllab)
