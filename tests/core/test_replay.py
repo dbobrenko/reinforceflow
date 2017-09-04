@@ -5,11 +5,10 @@ from __future__ import division
 import numpy as np
 import numpy.testing as npt
 from reinforceflow.core import ExperienceReplay, ProportionalReplay
-# TODO: add tests for ProportionalReplay.update
 
 
 def test_replay_add():
-    cap = 500000
+    cap = 10000
     replay = ExperienceReplay(capacity=cap, min_size=500, batch_size=32)
     for i in range(3*cap):
         replay.add(0, 0, 0, 0, False)
@@ -52,7 +51,7 @@ def test_replay_sample_term():
 
 
 def test_proportional_add():
-    cap = 500000
+    cap = 10000
     replay = ProportionalReplay(capacity=cap, min_size=500, batch_size=32, alpha=1.0)
     for i in range(3*cap):
         replay.add(0, 0, 0, 0, False)
@@ -76,37 +75,39 @@ def test_prop_replay_sample():
 
 
 def test_prop_replay_distribution():
-    priors = np.array([20000.0, 30000.0, 500.0, 49500.0, 0.0])
-    cap = 2048
+    priors = [20000.0, 30000.0, 1000.0, 49000.0, 0.0]
+    cap = 256
     batch_size = 32
+    sample_amount = 2000
     replay = ProportionalReplay(capacity=cap, min_size=cap, batch_size=batch_size, alpha=1.0)
     s = int(np.sum(priors))
-    expected_priors = priors / s
-    received_priors = dict.fromkeys(priors.tolist(), 0)
-    for p in priors:
-        replay.add(obs=p, action=0, reward=0, obs_next=0, term=False, priority=p)
-    for i in range(1000):
+    expected_priors = np.asarray(priors) / s
+    received_priors = [0] * len(priors)
+    for o, p in enumerate(priors):
+        replay.add(obs=o, action=0, reward=0, obs_next=0, term=False, priority=p)
+    for i in range(sample_amount):
         obs, a, r, obs_next, terms, idxs, importance = replay.sample()
         for o in obs:
-            received_priors[float(o)] += 1
-    received_priors = np.asarray(list(received_priors)) / s
-    npt.assert_almost_equal(expected_priors, received_priors, decimal=4)
+            received_priors[o] += 1
+    received_priors = np.asarray(received_priors) / (sample_amount*batch_size)
+    npt.assert_almost_equal(expected_priors, received_priors, decimal=2)
 
 
 def test_prop_replay_update():
-    priors = np.array([20000.0, 30000.0, 500.0, 49500.0, 0.0])
+    priors = np.array([20000.0, 30000.0, 1000.0, 49000.0, 0.0])
     cap = 2048
     batch_size = 32
+    sample_amount = 2000
     replay = ProportionalReplay(capacity=cap, min_size=cap, batch_size=batch_size, alpha=1.0)
     s = int(np.sum(priors))
     expected_priors = priors / s
-    received_priors = dict.fromkeys(priors.tolist(), 0)
-    for p in priors:
-        replay.add(obs=p, action=0, reward=0, obs_next=0, term=False)
-    replay.update(list(range(1000)), priors)
-    for i in range(1000):
+    received_priors = [0] * len(priors)
+    for o, p in enumerate(priors):
+        replay.add(obs=o, action=0, reward=0, obs_next=0, term=False)
+    replay.update(list(range(len(priors))), priors)
+    for i in range(sample_amount):
         obs, a, r, obs_next, terms, idxs, importance = replay.sample()
         for o in obs:
-            received_priors[float(o)] += 1
-    received_priors = np.asarray(list(received_priors)) / s
-    npt.assert_almost_equal(expected_priors, received_priors, decimal=4)
+            received_priors[o] += 1
+    received_priors = np.asarray(received_priors) / (sample_amount*batch_size)
+    npt.assert_almost_equal(expected_priors, received_priors, decimal=2)

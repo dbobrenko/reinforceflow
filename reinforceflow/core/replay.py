@@ -48,10 +48,10 @@ class ExperienceReplay(object):
         gather = itemgetter(*rand_idxs)
         next_obs_gather = itemgetter(*[i + 1 for i in rand_idxs])
         return (gather(self._obs),
-                np.asarray(gather(self._actions)),
-                np.asarray(gather(self._rewards)),
+                gather(self._actions),
+                gather(self._rewards),
                 next_obs_gather(self._obs),
-                np.asarray(gather(self._terms)),
+                gather(self._terms),
                 rand_idxs,
                 [1.0] * len(rand_idxs))
 
@@ -98,10 +98,10 @@ class ProportionalReplay(ExperienceReplay):
         next_obs_gather = itemgetter(*[i + 1 for i in idxs])
         importances = self._compute_importance(idxs)
         return (gather(self._obs),
-                np.asarray(gather(self._actions)),
-                np.asarray(gather(self._rewards)),
+                gather(self._actions),
+                gather(self._rewards),
                 next_obs_gather(self._obs),
-                np.asarray(gather(self._terms)),
+                gather(self._terms),
                 idxs,
                 importances)
 

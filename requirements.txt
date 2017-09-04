@@ -1,7 +1,0 @@
-tensorflow-gpu>=1.0.0
-gym>=0.9.1
-numpy
-scikit-image
-six
-matplotlib
-seaborn
