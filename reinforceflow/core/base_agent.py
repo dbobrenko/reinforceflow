@@ -4,111 +4,124 @@ from __future__ import print_function
 
 import os
 from collections import defaultdict
-from abc import ABCMeta, abstractmethod
-
+import abc
+import six
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from reinforceflow import error
-from reinforceflow.envs.env_wrappers import EnvWrapper
+import reinforceflow.utils
 from reinforceflow.core import GreedyPolicy
-from reinforceflow import misc
 from reinforceflow import logger
 
 
+@six.add_metaclass(abc.ABCMeta)
 class BaseAgent(object):
-    __metaclass__ = ABCMeta
-
-    @abstractmethod
+    @abc.abstractmethod
     def __init__(self, env):
         super(BaseAgent, self).__init__()
-        if not isinstance(env, EnvWrapper):
-            logger.warn("Wrapping environment %s into EnvWrapper." % env)
-            env = EnvWrapper(env)
         self.env = env
 
     def train(self, *args, **kwargs):
-        pass
+        raise NotImplementedError
+
+    def predict_action(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def test(self, episodes, max_ep_steps=int(1e5), render=False, copy_env=False):
+        """Tests agent's performance with specified policy on a given number of episodes.
+
+        Args:
+            episodes: (int) Number of episodes.
+            max_ep_steps: (int) Maximum allowed steps per episode.
+            render: (bool) Enables game screen rendering.
+            copy_env: (bool) Performs tests on the copy of environment instance.
+
+        Returns: (utils.IncrementalAverage) Average reward per episode.
+        """
+        env = self.env.copy() if copy_env else self.env
+        ep_rewards = reinforceflow.utils.IncrementalAverage()
+        for _ in range(episodes):
+            reward_accum = 0
+            obs = env.reset()
+            for _ in range(max_ep_steps):
+                if render:
+                    env.render()
+                action = self.predict_action(obs)
+                obs, r, terminal, info = env.step(action)
+                reward_accum += r
+                if terminal:
+                    break
+            ep_rewards.add(reward_accum)
+        return ep_rewards
 
 
+@six.add_metaclass(abc.ABCMeta)
 class BaseDiscreteAgent(BaseAgent):
     """Base class for Agent with discrete action space."""
-    __metaclass__ = ABCMeta
-
-    @abstractmethod
+    @abc.abstractmethod
     def __init__(self, env):
         super(BaseDiscreteAgent, self).__init__(env)
         if self.env.is_cont_action:
-            raise error.UnsupportedSpace('%s does not support environments with continuous '
-                                         'action space.' % self.__class__.__name__)
-        if self.env.has_multiple_action:
-            raise error.UnsupportedSpace('%s does not support environments with multiple '
-                                         'action spaces.' % self.__class__.__name__)
+            raise ValueError('%s does not support environments with continuous '
+                             'action space.' % self.__class__.__name__)
+        if self.env.is_multiaction:
+            raise ValueError('%s does not support environments with multiple '
+                             'action spaces.' % self.__class__.__name__)
 
 
+@six.add_metaclass(abc.ABCMeta)
 class TableAgent(BaseDiscreteAgent):
     """Base class for Table-based Agent with discrete observation and action space."""
-    __metaclass__ = ABCMeta
-
-    @abstractmethod
+    @abc.abstractmethod
     def __init__(self, env):
         super(TableAgent, self).__init__(env)
         if self.env.is_cont_obs:
-            raise error.UnsupportedSpace('%s does not support environments with continuous '
-                                         'observation space.' % self.__class__.__name__)
+            raise ValueError('%s does not support environments with continuous '
+                             'observation space.' % self.__class__.__name__)
         self.q_table = defaultdict(lambda: np.zeros(self.env.action_shape))
 
 
+@six.add_metaclass(abc.ABCMeta)
 class BaseDQNAgent(BaseDiscreteAgent):
-    __metaclass__ = ABCMeta
-
-    @abstractmethod
+    @abc.abstractmethod
     def __init__(self, env, net_factory, name=''):
         """Abstract base class for Deep Q-Network agent.
 
         Args:
-            env (envs.RawGymWrapper): Environment wrapper.
+            env: Environment wrapper instance.
             net_factory: Network factory, defined in nets file.
 
         Attributes:
-            env: Current environment.
-            net_factory: Function, used for building network model.
-            name: Agent's name prefix.
+            env: Environment instance.
+            net_factory: (function) Used for building network model.
+            name: (str) Agent's name prefix.
         """
         super(BaseDQNAgent, self).__init__(env=env)
         self._net_factory = net_factory
         self._scope = '' if not name else name + '/'
         with tf.variable_scope(self._scope + 'network') as scope:
-            self._action_ph = tf.placeholder('int32', [None], name='action')
+            self._action_ph = tf.placeholder('int32', [None] + self.env.action_shape, name='action')
             self._reward_ph = tf.placeholder('float32', [None], name='reward')
-            self.net = self._net_factory.make(input_shape=[None] + self.env.observation_shape,
-                                              output_size=self.env.action_shape)
+            self.net = self._net_factory.make(input_shape=[None] + self.env.obs_shape,
+                                              output_size=self.env.action_shape[0])
             self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                               scope.name)
-        self._no_op = tf.no_op()
-        self.global_step = None
-        self._obs_counter = None
-        self.opt = None
         self.sess = None
-        self._term_ph = None
         self._target_net = None
-        self._target_weights = None
         self._target_update = None
-        self._lr = None
-        self._action_onehot = None
-        self._loss = None
-        self._grads = None
-        self._grads_vars = None
-        self._train_op = None
         self._saver = None
-        self._summary_op = None
-        self._obs_counter_inc = None
         self._init_op = None
         self._save_vars = set()
+        self._no_op = tf.no_op()
+        with tf.variable_scope(self._scope + 'optimizer'):
+            self._no_op = tf.no_op()
+            self.global_step = tf.Variable(0, trainable=False, name='global_step')
+            self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
+            self._obs_counter_inc = self._obs_counter.assign_add(1, use_locking=True)
 
     def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
-                          decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
+                          decay=None, decay_args=None, gradient_clip=40.0, saver_keep=3):
         """Builds training graph.
 
         Args:
@@ -126,35 +139,6 @@ class BaseDQNAgent(BaseDiscreteAgent):
                               When exceeds, overwrites the most earliest checkpoints.
         """
         raise NotImplementedError
-
-    def test(self, episodes, policy=GreedyPolicy(), max_ep_steps=int(1e5), render=False):
-        """Tests agent's performance with specified policy on a given number of episodes.
-
-        Args:
-            episodes (int): Number of episodes.
-            policy (core.BasePolicy): Agent's policy.
-            max_ep_steps (int): Maximum allowed steps per episode.
-            render (bool): Enables game screen rendering.
-
-        Returns (tuple): Average reward per episode, average max. Q value per episode.
-        """
-        ep_rewards = misc.IncrementalAverage()
-        ep_q = misc.IncrementalAverage()
-        for _ in range(episodes):
-            reward_accum = 0
-            obs = self.env.reset()
-            for _ in range(max_ep_steps):
-                if render:
-                    self.env.render()
-                reward_per_action = self.predict(obs)
-                action = policy.select_action(self.env, reward_per_action)
-                obs, r, terminal, info = self.env.step(action)
-                ep_q.add(np.max(reward_per_action))
-                reward_accum += r
-                if terminal:
-                    break
-            ep_rewards.add(reward_accum)
-        return ep_rewards.compute_average(), ep_q.compute_average()
 
     def train(self, **kwargs):
         raise NotImplementedError
@@ -191,11 +175,18 @@ class BaseDQNAgent(BaseDiscreteAgent):
     def step_counter(self):
         return self.sess.run(self.global_step)
 
-    def predict(self, obs):
-        return self.sess.run(self.net.inference_op, {self.net.input_ph: obs})
+    def predict_action(self, obs, policy=GreedyPolicy()):
+        """Computes action for given observation."""
+        action_values = self.predict_on_batch([obs])
+        return policy.select_action(self.env, action_values)
+
+    def predict_on_batch(self, obs_batch):
+        """Computes action-values for given batch of observations."""
+        return self.sess.run(self.net.output, {self.net.input_ph: obs_batch})
 
     def target_predict(self, obs):
-        return self.sess.run(self._target_net.inference_op, {self._target_net.input_ph: obs})
+        """Computes target network action-values with for given batch of observations."""
+        return self.sess.run(self._target_net.output, {self._target_net.input_ph: obs})
 
     def target_update(self):
         self.sess.run(self._target_update)

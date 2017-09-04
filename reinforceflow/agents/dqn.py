@@ -8,11 +8,13 @@ from six.moves import range  # pylint: disable=redefined-builtin
 import numpy as np
 import tensorflow as tf
 
+import reinforceflow.utils
 from reinforceflow.core.base_agent import BaseDQNAgent
 from reinforceflow.core import ExperienceReplay
 from reinforceflow.core import EGreedyPolicy
-from reinforceflow import misc
+from reinforceflow import utils_tf
 from reinforceflow import logger
+from reinforceflow.utils_tf import add_grads_summary, add_observation_summary
 
 
 class DQNAgent(BaseDQNAgent):
@@ -22,7 +24,9 @@ class DQNAgent(BaseDQNAgent):
 
         See `core.base_agent.BaseDQNAgent.__init__`.
         Args:
-            use_double: (bool) Enables Double DQN.
+            use_double: (bool) Enables Double DQN, described at:
+                        "Dueling Network Architectures for Deep Reinforcement Learning",
+                        Schaul et al., 2016.
         """
         super(DQNAgent, self).__init__(env=env, net_factory=net_factory, name=name)
         config = tf.ConfigProto(
@@ -34,6 +38,16 @@ class DQNAgent(BaseDQNAgent):
         self._use_double = use_double
         self._importance_ph = tf.placeholder('float32', [None], name='importance_sampling')
         self._td_error = None
+        self.opt = None
+        self._term_ph = None
+        self._target_weights = None
+        self._lr = None
+        self._action_onehot = None
+        self._loss = None
+        self._grads = None
+        self._grads_vars = None
+        self._train_op = None
+        self._summary_op = None
 
     def build_train_graph(self, optimizer, learning_rate, optimizer_args=None, gamma=0.99,
                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
@@ -60,31 +74,30 @@ class DQNAgent(BaseDQNAgent):
         self._term_ph = tf.placeholder('float32', [None], name='term')
         with tf.variable_scope(self._scope + 'target_network') as scope:
             self._target_net =\
-                self._net_factory.make(input_shape=[None] + self.env.observation_shape,
-                                       output_size=self.env.action_shape)
+                self._net_factory.make(input_shape=[None] + self.env.obs_shape,
+                                       output_size=self.env.action_shape[0])
             self._target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                                      scope.name)
             self._target_update = [self._target_weights[i].assign(self._weights[i])
                                    for i in range(len(self._target_weights))]
 
         with tf.variable_scope(self._scope + 'optimizer'):
-            self.global_step = tf.Variable(0, trainable=False, name='global_step')
-            self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
-            self._obs_counter_inc = self._obs_counter.assign_add(1, use_locking=True)
-            self.opt, self._lr = misc.create_optimizer(optimizer, learning_rate,
-                                                       optimizer_args=optimizer_args,
-                                                       decay=decay, decay_args=decay_args,
-                                                       global_step=self.global_step)
-            self._action_onehot = tf.one_hot(self._action_ph, self.env.action_shape, 1.0, 0.0,
-                                             name='action_one_hot')
+            self.opt, self._lr = utils_tf.create_optimizer(optimizer, learning_rate,
+                                                           optimizer_args=optimizer_args,
+                                                           decay=decay, decay_args=decay_args,
+                                                           global_step=self.global_step)
+            self._action_onehot = tf.arg_max(self._action_ph, 1, name='action_argmax')
+            self._action_onehot = tf.one_hot(self._action_onehot, self.env.action_shape[0],
+                                             1.0, 0.0, name='action_one_hot')
             # Predict expected future reward for performed action
-            q_selected = tf.reduce_sum(self.net.inference_op * self._action_onehot, 1)
+            q_selected = tf.reduce_sum(self.net.output * self._action_onehot, 1)
             if self._use_double:
-                q_next_online_argmax = tf.arg_max(self.net.inference_op, 1)
-                q_next_online_onehot = tf.one_hot(q_next_online_argmax, self.env.action_shape, 1.0)
-                q_next_max = tf.reduce_sum(self._target_net.inference_op * q_next_online_onehot, 1)
+                q_next_online_argmax = tf.arg_max(self.net.output, 1)
+                q_next_online_onehot = tf.one_hot(q_next_online_argmax,
+                                                  self.env.action_shape[0], 1.0)
+                q_next_max = tf.reduce_sum(self._target_net.output * q_next_online_onehot, 1)
             else:
-                q_next_max = tf.reduce_max(self._target_net.inference_op, 1)
+                q_next_max = tf.reduce_max(self._target_net.output, 1)
             q_next_max_masked = (1.0 - self._term_ph) * q_next_max
             q_target = self._reward_ph + gamma * q_next_max_masked
             self._td_error = tf.stop_gradient(q_target) - q_selected
@@ -104,30 +117,25 @@ class DQNAgent(BaseDQNAgent):
         self._save_vars.add(self.global_step)
         self._save_vars.add(self._obs_counter)
         self._saver = tf.train.Saver(var_list=list(self._save_vars), max_to_keep=saver_keep)
-        for grad, w in self._grads_vars:
-            tf.summary.histogram(w.name, w)
-            tf.summary.histogram(w.name + '/gradients', grad)
-        if len(self.env.observation_shape) == 1:
-            tf.summary.histogram('agent/observation', self.net.input_ph)
-        elif len(self.env.observation_shape) <= 3:
-            tf.summary.image('agent/observation', self.net.input_ph)
-        else:
-            logger.warn('Cannot create summary for observation shape %s' % self.env.obs_shape)
+        add_grads_summary(self._grads_vars)
+        add_observation_summary(self.net.input_ph, self.env.obs_shape)
         tf.summary.histogram('agent/action', self._action_onehot)
-        tf.summary.histogram('agent/reward_per_action', self.net.inference_op)
-        tf.summary.scalar('agent/learning_rate', self._lr)
+        tf.summary.histogram('agent/action_values', self.net.output)
         tf.summary.scalar('metrics/loss', self._loss)
-        tf.summary.scalar('metrics/train_q', tf.reduce_mean(q_next_max))
+        tf.summary.scalar('agent/learning_rate', self._lr)
+        tf.summary.scalar('metrics/avg_q', tf.reduce_mean(q_next_max))
         self._summary_op = tf.summary.merge_all()
         self._init_op = tf.global_variables_initializer()
 
-    def _train(self, max_steps, update_freq, log_dir, render, target_freq, replay, policy, log_freq):
-        ep_reward = misc.IncrementalAverage()
-        reward_accum = 0
+    def _train(self, max_steps, update_freq, log_dir, render, target_freq, replay,
+               policy, log_freq, test_episodes, ignore_checkpoint):
+        avg_reward = reinforceflow.utils.IncrementalAverage()
+        ep_reward = 0
         episode = 0
+        last_log_ep = 0
         writer = tf.summary.FileWriter(log_dir, self.sess.graph)
         self.sess.run(self._init_op)
-        if log_dir and tf.train.latest_checkpoint(log_dir) is not None:
+        if not ignore_checkpoint and log_dir and tf.train.latest_checkpoint(log_dir) is not None:
             self.load_weights(log_dir)
         obs = self.env.reset()
         last_time = time.time()
@@ -139,17 +147,17 @@ class DQNAgent(BaseDQNAgent):
             step = self.step_counter
             if render:
                 self.env.render()
-            reward_per_action = self.predict(obs)
-            action = policy.select_action(self.env, reward_per_action, step)
+            action_values = self.predict_on_batch([obs])
+            action = policy.select_action(self.env, action_values, step)
             obs_next, reward, term, info = self.env.step(action)
-            reward_accum += reward
+            ep_reward += reward
             reward = np.clip(reward, -1, 1)
             replay.add(obs, action, reward, obs_next, term)
             obs = obs_next
             if replay.is_ready and obs_counter % update_freq == 0:
                 batch = replay.sample()
                 b_obs, b_action, b_reward, b_obs_next, b_term, b_idxs, b_importances = batch
-                summarize = term and log_freq and step - last_step > log_freq
+                summarize = episode > last_log_ep and step - last_step > log_freq
                 td_error, summary_str = self._train_on_batch(b_obs, b_action, b_reward, b_obs_next,
                                                              b_term, summarize, b_importances)
                 try:
@@ -164,9 +172,13 @@ class DQNAgent(BaseDQNAgent):
 
                 # Eval & log
                 if summarize:
+                    last_log_ep = episode
                     step = self.step_counter
-                    train_r = ep_reward.reset()
-                    test_r, test_q = self.test(episodes=3)
+                    num_ep = avg_reward.length
+                    max_r = avg_reward.max
+                    min_r = avg_reward.min
+                    train_r = avg_reward.reset()
+                    test_r = self.test(episodes=test_episodes, copy_env=True).compute_average()
                     obs_per_sec = (self.obs_counter - last_obs) / (time.time() - last_time)
                     step_per_sec = (self.step_counter - last_step) / (time.time() - last_time)
                     last_time = time.time()
@@ -174,15 +186,17 @@ class DQNAgent(BaseDQNAgent):
                     last_obs = self.obs_counter
                     logger.info("On-policy eval.: Average R: %.2f. Step: %d. Ep: %d"
                                 % (train_r, step, episode))
-                    logger.info("Greedy eval.: Average R: %.2f. "
-                                "Average maxQ: %.2f. Step: %d. Ep: %d"
-                                % (test_r, test_q, step, episode))
+                    logger.info("Greedy eval.: Average R: %.2f. Step: %d. Ep: %d"
+                                % (test_r, step, episode))
                     logger.info("Performance. Observation/sec: %0.2f. Update/sec: %0.2f."
                                 % (obs_per_sec, step_per_sec))
                     if log_dir and summary_str:
-                        logs = [tf.Summary.Value(tag='metrics/train_r', simple_value=train_r),
+                        logs = [tf.Summary.Value(tag='metrics/total_ep', simple_value=episode),
+                                tf.Summary.Value(tag='metrics/num_ep', simple_value=num_ep),
+                                tf.Summary.Value(tag='metrics/max_r', simple_value=max_r),
+                                tf.Summary.Value(tag='metrics/min_r', simple_value=min_r),
+                                tf.Summary.Value(tag='metrics/avg_r', simple_value=train_r),
                                 tf.Summary.Value(tag='metrics/test_r', simple_value=test_r),
-                                tf.Summary.Value(tag='metrics/test_q', simple_value=test_q),
                                 tf.Summary.Value(tag='agent/epsilon', simple_value=policy.epsilon),
                                 tf.Summary.Value(tag='step/sec', simple_value=step_per_sec),
                                 ]
@@ -190,8 +204,8 @@ class DQNAgent(BaseDQNAgent):
                         writer.add_summary(summary_str, global_step=step)
             if term:
                 episode += 1
-                ep_reward.add(reward_accum)
-                reward_accum = 0
+                avg_reward.add(ep_reward)
+                ep_reward = 0
                 obs = self.env.reset()
         writer.close()
 
@@ -227,7 +241,9 @@ class DQNAgent(BaseDQNAgent):
               gamma=0.99,
               target_freq=10000,
               log_freq=10000,
-              saver_keep=10,
+              saver_keep=3,
+              test_episodes=3,
+              ignore_checkpoint=False,
               **kwargs):
         """Starts training process.
 
@@ -235,31 +251,33 @@ class DQNAgent(BaseDQNAgent):
             max_steps: (int) Number of training steps (optimizer steps).
             update_freq: (int) Optimizer update frequency.
             optimizer: An optimizer string name or class.
-            learning_rate: (float or Tensor) Optimizer's learning rate.
-            log_dir: (str) directory for summary and checkpoints.
+            learning_rate: (float or Tensor) Optimizer learning rate.
+            log_dir: (str) Directory used for summary and checkpoints.
                      Continues training, if checkpoint already exists.
             replay: (core.ExperienceReplay) Experience buffer.
             policy: (core.BasePolicy) Agent's training policy.
-            optimizer_args: (dict) Keyword arguments, used for optimizer creation.
+            optimizer_args: (dict) Keyword arguments used for optimizer creation.
             decay: (function) Learning rate decay.
                    Expects tensorflow decay function or function name string.
-                   Available name strings: 'polynomial', 'exponential'.
+                   Available names: 'polynomial', 'exponential'.
                    To disable, pass None.
             decay_args: (dict) Keyword arguments used for learning rate decay function creation.
-            gradient_clip: (float) Norm gradient clipping.
-                           To disable, pass 0 or None.
+            gradient_clip: (float) Norm gradient clipping. To disable, pass 0 or None.
             render: (bool) Enables game screen rendering.
             gamma: (float) Reward discount factor.
             target_freq: (int) Target network update frequency (in update steps).
-            log_freq: (int) Log and summary frequency (in update steps).
+            log_freq: (int) Checkpoint and summary saving frequency (in update steps).
             saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
                         When exceeds, overwrites the most earliest checkpoints.
+            test_episodes: (int) Number of test episodes.
+            ignore_checkpoint: (bool) If enabled, training will start from scratch,
+                               and overwrite all old checkpoints found at `log_dir` path.
         """
         self.build_train_graph(optimizer, learning_rate, optimizer_args, gamma,
                                decay, decay_args, gradient_clip, saver_keep)
         try:
-            self._train(max_steps, update_freq, log_dir, render,
-                        target_freq, replay, policy, log_freq)
+            self._train(max_steps, update_freq, log_dir, render, target_freq, replay,
+                        policy, log_freq, test_episodes, ignore_checkpoint)
             logger.info('Training finished.')
         except KeyboardInterrupt:
             logger.info('Stopping training process...')

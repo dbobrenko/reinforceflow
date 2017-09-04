@@ -1,18 +1,71 @@
+"""This module provides basic network architectures:
+    Multi-layer Perceptron (MLPModel)
+    Dueling Multi-layer Perceptron (DuelingMLPModel)
+    Deep Q-Network model (DQNModel)
+    Dueling Deep Q-Network model (DuelingDQNModel)
+
+To implement a new model, compatible with ReinforceFlow agents, you should:
+    1. Implement a Model, that inherits from `AbstractModel`.
+    2. Implement a Factory for your Model, that inherits from `AbstractFactory`.
+
+    The newly created factory can be passed to any agent you would like to use.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
+import six
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import layers
 
 
-class DQNFactory(object):
+@six.add_metaclass(abc.ABCMeta)
+class AbstractFactory(object):
+    def make(self, input_shape, output_size):
+        raise NotImplementedError
+
+
+@six.add_metaclass(abc.ABCMeta)
+class AbstractModel(object):
+    """Abstract product model.
+    To implement a new model, you should implement the `output` field.
+
+    Args:
+        input_shape: (nd.array) Input observation shape.
+        output_size: (nd.array) Output action size.
+    """
+    @abc.abstractmethod
+    def __init__(self, input_shape, output_size):
+        output_size = np.squeeze(output_size).tolist()
+        if isinstance(output_size, list) and len(output_size) != 1:
+            raise ValueError('Output size must be either a scalar or vector.')
+        self._input_ph = tf.placeholder('float32', shape=input_shape, name='inputs')
+
+    @property
+    def input_ph(self):
+        """Input tensor placeholder."""
+        return self._input_ph
+
+    @property
+    def output(self):
+        """Output tensor operation."""
+        raise NotImplementedError
+
+
+class DQNFactory(AbstractFactory):
+    """Factory for DQN Model.
+    See `DQNModel`.
+    """
     def make(self, input_shape, output_size, trainable=True):
         return DQNModel(input_shape, output_size, trainable)
 
 
-class DuelingDQNFactory(object):
+class DuelingDQNFactory(AbstractFactory):
+    """Factory for Dueling DQN Model.
+    See `DuelingDQNModel`.
+    """
     def __init__(self, dueling_type='mean', advantage_layers=(512,), value_layers=(512,)):
         self.dueling_type = dueling_type
         self.advantage_layers = advantage_layers
@@ -25,16 +78,20 @@ class DuelingDQNFactory(object):
                                trainable=trainable)
 
 
-class MLPFactory(object):
+class MLPFactory(AbstractFactory):
+    """Factory for Multilayer Perceptron."""
     def __init__(self, layer_sizes=(512, 512, 512)):
         self.layer_sizes = layer_sizes
 
     def make(self, input_shape, output_size, trainable=True):
-        return DuelingMLPModel(input_shape, output_size, layer_sizes=self.layer_sizes,
-                               trainable=trainable)
+        return MLPModel(input_shape, output_size, layer_sizes=self.layer_sizes,
+                        trainable=trainable)
 
 
-class DuelingMLPFactory(object):
+class DuelingMLPFactory(AbstractFactory):
+    """Factory for Dueling Multilayer Perceptron.
+    See `DuelingMLPModel`.
+    """
     def __init__(self, layer_sizes=(512, 512), dueling_type='mean',
                  advantage_layers=(512,), value_layers=(512,)):
         self.dueling_type = dueling_type
@@ -50,34 +107,35 @@ class DuelingMLPFactory(object):
                                trainable=trainable)
 
 
-class DQNModel(object):
+class DQNModel(AbstractModel):
+    """Deep Q-Network model.
+    See "Human-level control through deep reinforcement learning", Mnih et al., 2015.
+    """
     def __init__(self, input_shape, output_size, trainable=True):
-        output_size = np.ravel(output_size)
-        if len(output_size) != 1:
-            raise ValueError('Output size must be either scalar or vector.')
-        output_size = int(output_size[0])
-        input_ph = tf.placeholder('float32', shape=input_shape, name='inputs')
-        net, end_points = _make_dqn_body(input_ph, trainable)
+        super(DQNModel, self).__init__(input_shape, output_size)
+        net, end_points = _make_dqn_body(self.input_ph, trainable)
         net = layers.fully_connected(net, num_outputs=512, activation_fn=tf.nn.relu,
                                      scope='fc1', trainable=trainable)
         end_points['fc1'] = net
         net = layers.fully_connected(net, num_outputs=output_size, activation_fn=None,
                                      scope='out', trainable=trainable)
         end_points['outs'] = net
-        self.input_ph = input_ph
-        self.inference_op = net
+        self._output = net
         self.end_points = end_points
 
+    @property
+    def output(self):
+        return self._output
 
-class DuelingDQNModel(object):
+
+class DuelingDQNModel(AbstractModel):
+    """Dueling Deep Q-Network model.
+    See "Dueling Network Architectures for Deep Reinforcement Learning", Schaul et al., 2016.
+    """
     def __init__(self, input_shape, output_size, dueling_type='mean',
                  advantage_layers=(512,), value_layers=(512,), trainable=True):
-        output_size = np.ravel(output_size)
-        if len(output_size) != 1:
-            raise ValueError('Output size must be either scalar or vector.')
-        output_size = int(output_size[0])
-        input_ph = tf.placeholder('float32', shape=input_shape, name='inputs')
-        net, end_points = _make_dqn_body(input_ph, trainable)
+        super(DuelingDQNModel, self).__init__(input_shape, output_size)
+        net, end_points = _make_dqn_body(self.input_ph, trainable)
         out, dueling_endpoints = _make_dueling(input_layer=net,
                                                output_size=output_size,
                                                dueling_type=dueling_type,
@@ -85,18 +143,21 @@ class DuelingDQNModel(object):
                                                value_layers=value_layers,
                                                trainable=trainable)
         end_points.update(dueling_endpoints)
-        self.input_ph = input_ph
-        self.inference_op = net
+        self._output = net
         self.end_points = end_points
 
+    @property
+    def output(self):
+        return self._output
 
-class MLPModel(object):
+
+class MLPModel(AbstractModel):
+    """Multilayer Perceptron."""
     def __init__(self, input_shape, output_size, layer_sizes=(512, 512, 512),
                  output_activation=None, trainable=True):
+        super(MLPModel, self).__init__(input_shape, output_size)
         end_points = {}
-        inputs = tf.placeholder('float32', shape=input_shape, name='inputs')
-        end_points['inputs'] = inputs
-        net = layers.flatten(inputs)
+        net = layers.flatten(self.input_ph)
         for i, units in enumerate(layer_sizes):
             name = 'fc%d' % i
             net = layers.fully_connected(net, num_outputs=units, activation_fn=tf.nn.relu,
@@ -105,18 +166,23 @@ class MLPModel(object):
         net = layers.fully_connected(net, num_outputs=output_size, activation_fn=output_activation,
                                      trainable=trainable, scope='outs')
         end_points['outs'] = net
-        self.input_ph = inputs
-        self.inference_op = net
+        self._output = net
         self.end_points = end_points
 
+    @property
+    def output(self):
+        return self._output
 
-class DuelingMLPModel(object):    
+
+class DuelingMLPModel(AbstractModel):
+    """Dueling Multilayer Perceptron.
+    See "Dueling Network Architectures for Deep Reinforcement Learning", Schaul et al., 2016.
+    """
     def __init__(self, input_shape, output_size, layer_sizes=(512, 512), dueling_type='mean',
                  advantage_layers=(256,), value_layers=(256,), trainable=True):
+        super(DuelingMLPModel, self).__init__(input_shape, output_size)
         end_points = {}
-        inputs = tf.placeholder('float32', shape=input_shape, name='inputs')
-        end_points['inputs'] = inputs
-        net = layers.flatten(inputs)
+        net = layers.flatten(self.input_ph)
         for i, units in enumerate(layer_sizes):
             name = 'fc%d' % i
             net = layers.fully_connected(net, num_outputs=units, activation_fn=tf.nn.relu,
@@ -129,9 +195,12 @@ class DuelingMLPModel(object):
                                                value_layers=value_layers,
                                                trainable=trainable)
         end_points.update(dueling_endpoints)
-        self.input_ph = inputs
-        self.inference_op = net
+        self._output = net
         self.end_points = end_points
+
+    @property
+    def output(self):
+        return self._output
 
 
 def _make_dqn_body(input_layer, trainable=True):

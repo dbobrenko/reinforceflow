@@ -65,7 +65,7 @@ class SumTree(BaseSegmentTree):
     See `BaseSegmentTree`.
     """
     def __init__(self, capacity, default_priority=0):
-        super().__init__(capacity, default_priority)
+        super(SumTree, self).__init__(capacity, default_priority)
 
     def _update(self, idx, priority):
         diff = priority - self._tree[idx]
@@ -91,7 +91,7 @@ class MinTree(BaseSegmentTree):
     See `BaseSegmentTree`.
     """
     def __init__(self, capacity, default_priority=float('inf')):
-        super().__init__(capacity, default_priority)
+        super(MinTree, self).__init__(capacity, default_priority)
 
     def _update(self, idx, priority):
         self._tree[idx] = priority

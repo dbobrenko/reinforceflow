@@ -33,5 +33,5 @@ agent.train(max_steps=steps,
             target_freq=10000,
             policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=1000000),
             replay=ExperienceReplay(capacity=replay_size, min_size=replay_size, batch_size=32),
-            log_freq=100,
+            log_freq=2000,
             log_dir='/tmp/reinforceflow/%s/double_dqn/rms_paper/' % env_name)

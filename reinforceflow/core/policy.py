@@ -3,6 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+import numpy as np
+from reinforceflow.utils import one_hot
 
 
 class BasePolicy(object):
@@ -12,7 +14,7 @@ class BasePolicy(object):
 
 class GreedyPolicy(BasePolicy):
     def select_action(self, env, prediction):
-        return env.prepare_action(prediction)
+        return one_hot(env.action_shape, np.argmax(prediction))
 
 
 class EGreedyPolicy(BasePolicy):
@@ -27,9 +29,9 @@ class EGreedyPolicy(BasePolicy):
     def select_action(self, env, prediction, step):
         self.epsilon = self._update_epsilon(step)
         if random.random() > self.epsilon:
-            return env.prepare_action(prediction)
+            return one_hot(env.action_shape, np.argmax(prediction))
         else:
-            return env.action_space.sample()
+            return env.action_sample()
 
     def _update_epsilon(self, step):
         if step >= self._anneal_steps:

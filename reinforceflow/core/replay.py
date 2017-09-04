@@ -11,14 +11,16 @@ from reinforceflow import logger
 
 class ExperienceReplay(object):
     def __init__(self, capacity, min_size, batch_size):
+        if batch_size < 1:
+            raise ValueError("Batch size must be higher or equal to 1.")
         if capacity < batch_size:
             logger.warn("Minimum capacity must be higher or equal "
-                        "to the batch _size (Got: %s)."
-                        "Setting minimum buffer _size to the batch _size." % batch_size)
+                        "to the batch size (Got: %s). "
+                        "Setting minimum buffer size to the batch size." % capacity)
             capacity = batch_size
         self._capacity = capacity
         self._batch_size = batch_size
-        self._min_size = min(capacity, min_size)
+        self._min_size = max(batch_size, min_size)
         # Python lists offers ~18% faster index access speed at current setup,
         # at the same time sacrificing ~18% of memory.
         self._obs = [0] * (capacity + 1)
@@ -45,10 +47,10 @@ class ExperienceReplay(object):
         rand_idxs = random.sample(range(self._size), self._batch_size)
         gather = itemgetter(*rand_idxs)
         next_obs_gather = itemgetter(*[i + 1 for i in rand_idxs])
-        return (np.vstack(gather(self._obs)).squeeze(),
+        return (gather(self._obs),
                 np.asarray(gather(self._actions)),
                 np.asarray(gather(self._rewards)),
-                np.vstack(next_obs_gather(self._obs)).squeeze(),
+                next_obs_gather(self._obs),
                 np.asarray(gather(self._terms)),
                 rand_idxs,
                 [1.0] * len(rand_idxs))
@@ -95,10 +97,10 @@ class ProportionalReplay(ExperienceReplay):
         gather = itemgetter(*idxs)
         next_obs_gather = itemgetter(*[i + 1 for i in idxs])
         importances = self._compute_importance(idxs)
-        return (np.vstack(gather(self._obs)).squeeze(),
+        return (gather(self._obs),
                 np.asarray(gather(self._actions)),
                 np.asarray(gather(self._rewards)),
-                np.vstack(next_obs_gather(self._obs)).squeeze(),
+                next_obs_gather(self._obs),
                 np.asarray(gather(self._terms)),
                 idxs,
                 importances)

@@ -3,10 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 import six
-import numpy as np
 import tensorflow as tf
 from tensorflow.python.framework import ops
-
 from reinforceflow import logger
 
 _OPTIMIZER_MAP = {
@@ -93,39 +91,31 @@ def create_decay(decay, learning_rate, global_step, **kwargs):
     return learning_rate
 
 
-def discount_rewards(rewards, gamma, expected_reward=0.0):
-    discount_sum = expected_reward
-    result = [0] * len(rewards)
-    for i in reversed(range(len(rewards))):
-        discount_sum = rewards[i] + gamma * discount_sum
-        result[i] = discount_sum
-    return result
+def add_grads_summary(grad_vars):
+    """Adds summary for weights and gradients.
+
+    Args:
+        grad_vars: Tuple of gradients and weights tensors.
+    """
+    for grad, w in grad_vars:
+        tf.summary.histogram(w.name, w)
+        tf.summary.histogram(w.name + '/gradients', grad)
 
 
-class IncrementalAverage(object):
-    def __init__(self):
-        self._total = 0.0
-        self._counter = 0
+def add_observation_summary(obs, obs_shape):
+    """Adds observation summary.
+    Supports observation tensors with 1, 2 and 3 dimensions only.
+    1-D tensors logs as histogram summary.
+    2-D and 3-D tensors logs as image summary.
 
-    def add(self, value):
-        self._total += value
-        self._counter += 1
-
-    def add_batch(self, batch):
-        self._total += np.sum(batch)
-        self._counter += len(batch)
-
-    def compute_average(self):
-        return self._total / (self._counter or 1)
-
-    def reset(self):
-        average = self.compute_average()
-        self._total = 0.0
-        self._counter = 0
-        return average
-
-    def __float__(self):
-        return self.compute_average()
-
-    def __repr__(self):
-        return str(self.compute_average())
+    Args:
+        obs: (Tensor) Observation.
+        obs_shape: (nd.array) Observation shape.
+    """
+    if len(obs_shape) == 1:
+        tf.summary.histogram('observation', obs)
+    elif len(obs_shape) <= 3:
+        tf.summary.image('observation', obs)
+    else:
+        logger.warn('Cannot create summary for observation with shape %s'
+                    % obs_shape)
