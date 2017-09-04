@@ -31,6 +31,6 @@ script:
   - python -c "import reinforceflow; print('reinforceflow %s' % reinforceflow.__version__)"
   - if [[ "$MODE" == "tests" ]]; then
       pytest tests/;
-    # elif [[ "$MODE" == "pylint" ]]; then
-    #   pylint --errors-only --extension-pkg-whitelist=numpy
     fi
+#  elif [[ "$MODE" == "pylint" ]]; then
+#    pylint --errors-only --extension-pkg-whitelist=numpy
