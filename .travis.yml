@@ -25,7 +25,8 @@ install:
   - conda info -a
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numpy scipy matplotlib pandas pytest h5py
   - source activate test-environment
-  - pip install -e .[tf]
+  - pip install tensorflow
+  - pip install -e .
 
 script:
   - python -c "import reinforceflow; print('reinforceflow %s' % reinforceflow.__version__)"
