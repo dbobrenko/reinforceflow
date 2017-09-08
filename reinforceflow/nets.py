@@ -107,48 +107,19 @@ class DuelingMLPFactory(AbstractFactory):
                                trainable=trainable)
 
 
-class DQNModel(AbstractModel):
-    """Deep Q-Network model.
-    See "Human-level control through deep reinforcement learning", Mnih et al., 2015.
-    """
-    def __init__(self, input_shape, output_size, trainable=True):
-        super(DQNModel, self).__init__(input_shape, output_size)
-        net, end_points = _make_dqn_body(self.input_ph, trainable)
-        net = layers.fully_connected(net, num_outputs=512, activation_fn=tf.nn.relu,
-                                     scope='fc1', trainable=trainable)
-        end_points['fc1'] = net
-        net = layers.fully_connected(net, num_outputs=output_size, activation_fn=None,
-                                     scope='out', trainable=trainable)
-        end_points['outs'] = net
-        self._output = net
-        self.end_points = end_points
+class A3CMLPFactory(AbstractFactory):
+    """Factory for Multilayer Perceptron."""
+    def __init__(self, layer_sizes=(512, 512, 512)):
+        self.layer_sizes = layer_sizes
 
-    @property
-    def output(self):
-        return self._output
+    def make(self, input_shape, output_size, trainable=True):
+        return A3CMLPModel(input_shape, output_size, layer_sizes=self.layer_sizes,
+                           trainable=trainable)
 
 
-class DuelingDQNModel(AbstractModel):
-    """Dueling Deep Q-Network model.
-    See "Dueling Network Architectures for Deep Reinforcement Learning", Schaul et al., 2016.
-    """
-    def __init__(self, input_shape, output_size, dueling_type='mean',
-                 advantage_layers=(512,), value_layers=(512,), trainable=True):
-        super(DuelingDQNModel, self).__init__(input_shape, output_size)
-        net, end_points = _make_dqn_body(self.input_ph, trainable)
-        out, dueling_endpoints = _make_dueling(input_layer=net,
-                                               output_size=output_size,
-                                               dueling_type=dueling_type,
-                                               advantage_layers=advantage_layers,
-                                               value_layers=value_layers,
-                                               trainable=trainable)
-        end_points.update(dueling_endpoints)
-        self._output = net
-        self.end_points = end_points
-
-    @property
-    def output(self):
-        return self._output
+class A3CFFFactory(AbstractFactory):
+    def make(self, input_shape, output_size, trainable=True):
+        return A3CFFModel(input_shape, output_size, trainable)
 
 
 class MLPModel(AbstractModel):
@@ -163,15 +134,14 @@ class MLPModel(AbstractModel):
             net = layers.fully_connected(net, num_outputs=units, activation_fn=tf.nn.relu,
                                          trainable=trainable, scope=name)
             end_points[name] = net
-        net = layers.fully_connected(net, num_outputs=output_size, activation_fn=output_activation,
-                                     trainable=trainable, scope='outs')
-        end_points['outs'] = net
-        self._output = net
+        end_points['out'] = layers.fully_connected(net, num_outputs=output_size,
+                                                   activation_fn=output_activation,
+                                                   trainable=trainable, scope='out')
         self.end_points = end_points
 
     @property
     def output(self):
-        return self._output
+        return self.end_points['out']
 
 
 class DuelingMLPModel(AbstractModel):
@@ -189,6 +159,109 @@ class DuelingMLPModel(AbstractModel):
                                          trainable=trainable, scope=name)
             end_points[name] = net
         net, dueling_endpoints = _make_dueling(input_layer=net,
+                                               output_size=output_size,
+                                               dueling_type=dueling_type,
+                                               advantage_layers=advantage_layers,
+                                               value_layers=value_layers,
+                                               trainable=trainable)
+        end_points.update(dueling_endpoints)
+        self._output = net
+        self.end_points = end_points
+
+    @property
+    def output(self):
+        return self._output
+
+
+class DQNModel(AbstractModel):
+    """Deep Q-Network model.
+    See "Human-level control through deep reinforcement learning", Mnih et al., 2015.
+    """
+    def __init__(self, input_shape, output_size, trainable=True):
+        super(DQNModel, self).__init__(input_shape, output_size)
+        net, end_points = _make_dqn_body(self.input_ph, trainable)
+        net = layers.fully_connected(net, num_outputs=512, activation_fn=tf.nn.relu,
+                                     scope='fc1', trainable=trainable)
+        end_points['fc1'] = net
+        end_points['out'] = layers.fully_connected(net, num_outputs=output_size,
+                                                   activation_fn=None, scope='out',
+                                                   trainable=trainable)
+        self.end_points = end_points
+
+    @property
+    def output(self):
+        return self.end_points['out']
+
+
+class A3CFFModel(AbstractModel):
+    """Asynchronous Advantage Actor-Critic Feed-Forward model.
+    See "Human-level control through deep reinforcement learning", Mnih et al., 2015.
+    """
+    def __init__(self, input_shape, output_size, trainable=True, policy_activation=tf.nn.softmax):
+        super(A3CFFModel, self).__init__(input_shape, output_size)
+        net, end_points = _make_dqn_body(self.input_ph, trainable)
+        end_points['fc1'] = layers.fully_connected(net, num_outputs=512, activation_fn=tf.nn.relu,
+                                                   scope='fc1', trainable=trainable)
+        end_points['out_value'] = layers.fully_connected(end_points['fc1'], num_outputs=1,
+                                                         activation_fn=None, scope='out_value',
+                                                         trainable=trainable)
+        end_points['out_value'] = tf.squeeze(end_points['out_value'])
+        end_points['out_policy'] = layers.fully_connected(end_points['fc1'],
+                                                          num_outputs=output_size,
+                                                          activation_fn=policy_activation,
+                                                          scope='out_policy', trainable=trainable)
+        self.end_points = end_points
+        self.output_policy = self.output
+
+    @property
+    def output(self):
+        return self.end_points['out_policy']
+
+    @property
+    def output_value(self):
+        return self.end_points['out_value']
+
+
+class A3CMLPModel(AbstractModel):
+    """Asynchronous Advantage Actor-Critic MLP model."""
+    def __init__(self, input_shape, output_size, layer_sizes=(512, 512, 512),
+                 policy_activation=tf.nn.softmax, trainable=True):
+        super(A3CMLPModel, self).__init__(input_shape, output_size)
+        end_points = {}
+        net = layers.flatten(self.input_ph)
+        for i, units in enumerate(layer_sizes):
+            name = 'fc%d' % i
+            net = layers.fully_connected(net, num_outputs=units, activation_fn=tf.nn.relu,
+                                         trainable=trainable, scope=name)
+            end_points[name] = net
+        end_points['out_policy'] = layers.fully_connected(net, num_outputs=output_size,
+                                                          activation_fn=policy_activation,
+                                                          trainable=trainable, scope='out_policy')
+        end_points['out_value'] = layers.fully_connected(net, num_outputs=1,
+                                                         activation_fn=None, scope='out_value',
+                                                         trainable=trainable)
+        end_points['out_value'] = tf.squeeze(end_points['out_value'])
+        self.end_points = end_points
+        self.output_policy = self.output
+
+    @property
+    def output(self):
+        return self.end_points['out_policy']
+
+    @property
+    def output_value(self):
+        return self.end_points['out_value']
+
+
+class DuelingDQNModel(AbstractModel):
+    """Dueling Deep Q-Network model.
+    See "Dueling Network Architectures for Deep Reinforcement Learning", Schaul et al., 2016.
+    """
+    def __init__(self, input_shape, output_size, dueling_type='mean',
+                 advantage_layers=(512,), value_layers=(512,), trainable=True):
+        super(DuelingDQNModel, self).__init__(input_shape, output_size)
+        net, end_points = _make_dqn_body(self.input_ph, trainable)
+        out, dueling_endpoints = _make_dueling(input_layer=net,
                                                output_size=output_size,
                                                dueling_type=dueling_type,
                                                advantage_layers=advantage_layers,
@@ -270,5 +343,5 @@ def _make_dueling(input_layer, output_size, dueling_type='mean',
     else:
         raise ValueError("Unknown dueling type '%s'. Available: 'naive', 'mean', 'max'."
                          % dueling_type)
-    end_points['outs'] = out
+    end_points['out'] = out
     return out, end_points

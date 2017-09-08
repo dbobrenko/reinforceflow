@@ -99,7 +99,8 @@ def add_grads_summary(grad_vars):
     """
     for grad, w in grad_vars:
         tf.summary.histogram(w.name, w)
-        tf.summary.histogram(w.name + '/gradients', grad)
+        if grad is not None:
+            tf.summary.histogram(w.name + '/gradients', grad)
 
 
 def add_observation_summary(obs, obs_shape):

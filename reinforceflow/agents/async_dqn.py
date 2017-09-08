@@ -3,7 +3,6 @@ from __future__ import print_function
 from __future__ import division
 
 import time
-import random
 import copy
 from threading import Thread
 
@@ -50,7 +49,6 @@ class AsyncDQNAgent(BaseDQNAgent):
         self._grads_vars = None
         self._train_op = None
         self._summary_op = None
-        self.sess.run(tf.global_variables_initializer())
 
     def _write_summary(self, test_episodes=3):
         test_r = self.test(episodes=test_episodes)
