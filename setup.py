@@ -31,5 +31,6 @@ setup(name='reinforceflow',
       packages=[package for package in find_packages()
                 if package.startswith('reinforceflow')],
       install_requires=install_requires,
+      extras_require=extras_require,
       zip_safe=False)
 
