@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import six
 import tensorflow as tf
 from tensorflow.python.framework import ops
@@ -31,6 +32,19 @@ _DECAY_MAP = {
 
 def create_optimizer(opt, learning_rate, optimizer_args=None, decay=None,
                      decay_args=None, global_step=None):
+    """Creates TensorFlow optimizer with given args and learning rate decay.
+
+    Args:
+        opt: TensorFlow optimizer, expects string or callable object.
+        learning_rate: Optimizer learning rate, expects float or Tensor.
+        optimizer_args: (dict) TensorFlow optimizer kwargs.
+        decay: (str) Learning rate decay. Available: poly, exp.
+        decay_args: (dict) Learning rate decay kwargs.
+        global_step: (Tensor) Optimizer global step.
+
+    Returns:
+        (tuple) Optimizer instance, learning rate tensor.
+    """
     if optimizer_args is None:
         optimizer_args = {}
     # Process learning rate
@@ -71,6 +85,17 @@ def create_optimizer(opt, learning_rate, optimizer_args=None, decay=None,
 
 
 def create_decay(decay, learning_rate, global_step, **kwargs):
+    """Creates learning rate decay with given args.
+
+    Args:
+        decay: (str) Learning rate decay. Available: poly, exp.
+        learning_rate: Optimizer learning rate, expects float or Tensor.
+        global_step: (Tensor) Optimizer global step.
+        **kwargs: Learning rate decay function kwargs.
+
+    Returns:
+        (Tensor) Learning rate with applied decay.
+    """
     if callable(decay) and hasattr(decay, __name__):
         decay = decay.__name__
 
@@ -120,3 +145,85 @@ def add_observation_summary(obs, obs_shape):
     else:
         logger.warn('Cannot create summary for observation with shape %s'
                     % obs_shape)
+
+
+class SummaryLogger(object):
+    def __init__(self, step_counter, obs_counter):
+        """Agent's performance logger.
+
+        Args:
+            step_counter: (int) Initial optimizer update step.
+            obs_counter: (int) Initial observation counter.
+        """
+        self.last_time = time.time()
+        self.last_step = step_counter
+        self.last_obs = obs_counter
+
+    def summarize(self, rewards, test_rewards, ep_counter, step_counter, obs_counter,
+                  q_values=None, log_performance=True, reset_rewards=True, scope=''):
+        """
+
+        Args:
+            rewards: (utils.IncrementalAverage) On-policy reward incremental average.
+                     To disable reward logging, pass None.
+            test_rewards: (utils.IncrementalAverage) Greedy-polcy reward incremental average.
+                          To disable test reward logging, pass None.
+            ep_counter: (int) Episode counter.
+            step_counter: (int) Optimizer update step counter.
+            obs_counter: (int) Observation counter. To disable performance logging, pass None.
+            q_values: (utils.IncrementalAverage) On-policy max Q-values incremental average.
+                      Used in DQN-like agents. To disable Q-values logging, pass None.
+            log_performance: (bool) Enables performance logging.
+            reset_rewards: (bool) If enabled, resets `rewards` and `test_rewards` counters.
+            scope: (str) Agent's name scope.
+
+        Returns:
+            TensorFlow summary logs.
+        """
+        logs = []
+        print_info = ''
+        if rewards:
+            num_ep = rewards.length
+            max_r = rewards.max
+            min_r = rewards.min
+            avg_r = rewards.reset() if reset_rewards else rewards.compute_average()
+            print_info += "On-policy Avg R: %.2f. " % avg_r
+            logs += [tf.Summary.Value(tag=scope + 'metrics/num_ep', simple_value=num_ep),
+                     tf.Summary.Value(tag=scope + 'metrics/max_R', simple_value=max_r),
+                     tf.Summary.Value(tag=scope + 'metrics/min_R', simple_value=min_r),
+                     tf.Summary.Value(tag=scope + 'metrics/avg_R', simple_value=avg_r)]
+        if q_values:
+            max_q = q_values.max
+            min_q = q_values.min
+            avg_q = q_values.reset() if reset_rewards else q_values.compute_average()
+            print_info += "Avg Q-value: %.2f. " % avg_q
+            logs += [tf.Summary.Value(tag=scope + 'metrics/avg_Q', simple_value=avg_q),
+                     tf.Summary.Value(tag=scope + 'metrics/max_Q', simple_value=max_q),
+                     tf.Summary.Value(tag=scope + 'metrics/min_Q', simple_value=min_q)]
+        if test_rewards:
+            test_max_r = test_rewards.max
+            test_min_r = test_rewards.min
+            test_avg_r = test_rewards.reset() if reset_rewards else test_rewards.compute_average()
+            print_info += "Greedy-policy Avg R: %.2f. " % test_avg_r
+            logs += [tf.Summary.Value(tag=scope + 'metrics/avg_greedy_R', simple_value=test_avg_r),
+                     tf.Summary.Value(tag=scope + 'metrics/max_greedy_R', simple_value=test_max_r),
+                     tf.Summary.Value(tag=scope + 'metrics/min_greedy_R', simple_value=test_min_r)]
+        if print_info:
+            name = scope.replace('/', '') + '. ' if len(scope) else scope
+            print_info = "%s%sUpdate step: %d. Obs: %d. Ep: %d" \
+                         % (name, print_info, step_counter, obs_counter, ep_counter)
+            logger.info(print_info)
+        if log_performance:
+            step_per_sec = (step_counter - self.last_step) / (time.time() - self.last_time)
+            obs_per_sec = (obs_counter - self.last_obs) / (time.time() - self.last_time)
+            logger.info("Observation/sec: %0.2f. Optimizer update/sec: %0.2f."
+                        % (obs_per_sec, step_per_sec))
+            logs += [tf.Summary.Value(tag=scope + 'metrics/total_ep', simple_value=ep_counter),
+                     tf.Summary.Value(tag=scope + 'step_per_sec', simple_value=step_per_sec),
+                     tf.Summary.Value(tag=scope + 'obs_per_sec', simple_value=obs_per_sec),
+                     ]
+            self.last_step = step_counter
+            self.last_obs = obs_counter
+            self.last_time = time.time()
+
+        return tf.Summary(value=logs)

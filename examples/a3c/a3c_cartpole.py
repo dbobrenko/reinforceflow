@@ -18,12 +18,13 @@ reinforceflow.set_random_seed(555)
 env_name = 'CartPole-v0'
 env = EnvFactory.make(env_name, use_smart_wrap=True)
 steps = 80000
-agent = A3CAgent(env, net_factory=A3CMLPFactory(layer_sizes=(256, 256)), use_gpu=True)
+agent = A3CAgent(env, net_factory=A3CMLPFactory(layer_sizes=(256, 256)),
+                 use_gpu=True)
 agent.train(num_threads=8,
             render=False,
             steps=steps,
             optimizer='adam',
-            learning_rate=0.005,
+            learning_rate=0.0005,
             policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=0.8 * steps),
             target_freq=5000,
             gamma=0.99,

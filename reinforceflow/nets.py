@@ -109,17 +109,22 @@ class DuelingMLPFactory(AbstractFactory):
 
 class A3CMLPFactory(AbstractFactory):
     """Factory for Multilayer Perceptron."""
-    def __init__(self, layer_sizes=(512, 512, 512)):
+    def __init__(self, layer_sizes=(512, 512, 512), policy_activation=tf.nn.softmax):
         self.layer_sizes = layer_sizes
+        self.policy_activation = policy_activation
 
     def make(self, input_shape, output_size, trainable=True):
         return A3CMLPModel(input_shape, output_size, layer_sizes=self.layer_sizes,
-                           trainable=trainable)
+                           policy_activation=self.policy_activation, trainable=trainable)
 
 
 class A3CFFFactory(AbstractFactory):
+    def __init__(self, policy_activation=tf.nn.softmax):
+        self.policy_activation = policy_activation
+
     def make(self, input_shape, output_size, trainable=True):
-        return A3CFFModel(input_shape, output_size, trainable)
+        return A3CFFModel(input_shape, output_size,
+                          policy_activation=self.policy_activation, trainable=trainable)
 
 
 class MLPModel(AbstractModel):
@@ -146,7 +151,7 @@ class MLPModel(AbstractModel):
 
 class DuelingMLPModel(AbstractModel):
     """Dueling Multilayer Perceptron.
-    See "Dueling Network Architectures for Deep Reinforcement Learning", Schaul et al., 2016.
+    See "Dueling Network Architectures for Deep Reinforcement Learning", Wang et al., 2016.
     """
     def __init__(self, input_shape, output_size, layer_sizes=(512, 512), dueling_type='mean',
                  advantage_layers=(256,), value_layers=(256,), trainable=True):
@@ -237,6 +242,7 @@ class A3CMLPModel(AbstractModel):
         end_points['out_policy'] = layers.fully_connected(net, num_outputs=output_size,
                                                           activation_fn=policy_activation,
                                                           trainable=trainable, scope='out_policy')
+        # end_points['out_policy'] = tf.squeeze(end_points['out_policy'])
         end_points['out_value'] = layers.fully_connected(net, num_outputs=1,
                                                          activation_fn=None, scope='out_value',
                                                          trainable=trainable)

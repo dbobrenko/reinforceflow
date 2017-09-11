@@ -14,7 +14,6 @@ from reinforceflow.core import ExperienceReplay
 from reinforceflow.core import EGreedyPolicy
 from reinforceflow import utils_tf
 from reinforceflow import logger
-from reinforceflow.utils_tf import add_grads_summary, add_observation_summary
 
 
 class DQNAgent(BaseDQNAgent):
@@ -37,17 +36,12 @@ class DQNAgent(BaseDQNAgent):
         self.sess.run(tf.global_variables_initializer())
         self._use_double = use_double
         self._importance_ph = tf.placeholder('float32', [None], name='importance_sampling')
-        self._td_error = None
-        self.opt = None
         self._term_ph = None
-        self._target_weights = None
-        self._lr = None
-        self._action_onehot = None
-        self._loss = None
-        self._grads = None
-        self._grads_vars = None
+        self._td_error = None
         self._train_op = None
+        self._target_net = None
         self._summary_op = None
+        self._target_update = None
 
     def build_train_graph(self, optimizer, learning_rate, optimizer_args=None, gamma=0.99,
                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
@@ -76,21 +70,21 @@ class DQNAgent(BaseDQNAgent):
             self._target_net =\
                 self._net_factory.make(input_shape=[None] + self.env.obs_shape,
                                        output_size=self.env.action_shape[0])
-            self._target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                     scope.name)
-            self._target_update = [self._target_weights[i].assign(self._weights[i])
-                                   for i in range(len(self._target_weights))]
+            target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                               scope.name)
+            self._target_update = [target_weights[i].assign(self._weights[i])
+                                   for i in range(len(target_weights))]
 
         with tf.variable_scope(self._scope + 'optimizer'):
-            self.opt, self._lr = utils_tf.create_optimizer(optimizer, learning_rate,
-                                                           optimizer_args=optimizer_args,
-                                                           decay=decay, decay_args=decay_args,
-                                                           global_step=self.global_step)
-            self._action_onehot = tf.arg_max(self._action_ph, 1, name='action_argmax')
-            self._action_onehot = tf.one_hot(self._action_onehot, self.env.action_shape[0],
-                                             1.0, 0.0, name='action_one_hot')
+            opt, lr = utils_tf.create_optimizer(optimizer, learning_rate,
+                                                optimizer_args=optimizer_args,
+                                                decay=decay, decay_args=decay_args,
+                                                global_step=self.global_step)
+            action_onehot = tf.arg_max(self._action_ph, 1, name='action_argmax')
+            action_onehot = tf.one_hot(action_onehot, self.env.action_shape[0],
+                                       1.0, 0.0, name='action_one_hot')
             # Predict expected future reward for performed action
-            q_selected = tf.reduce_sum(self.net.output * self._action_onehot, 1)
+            q_selected = tf.reduce_sum(self.net.output * action_onehot, 1)
             if self._use_double:
                 q_next_online_argmax = tf.arg_max(self.net.output, 1)
                 q_next_online_onehot = tf.one_hot(q_next_online_argmax,
@@ -102,45 +96,42 @@ class DQNAgent(BaseDQNAgent):
             q_target = self._reward_ph + gamma * q_next_max_masked
             self._td_error = tf.stop_gradient(q_target) - q_selected
             td_error_weighted = self._td_error * self._importance_ph
-            self._loss = tf.reduce_mean(tf.square(td_error_weighted), name='loss')
-            self._grads = tf.gradients(self._loss, self._weights)
+            loss = tf.reduce_mean(tf.square(td_error_weighted), name='loss')
+            grads = tf.gradients(loss, self._weights)
             if gradient_clip:
-                self._grads, _ = tf.clip_by_global_norm(self._grads, gradient_clip)
-            self._grads_vars = list(zip(self._grads, self._weights))
-            self._train_op = self.opt.apply_gradients(self._grads_vars,
-                                                      global_step=self.global_step)
-        self._save_vars |= set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                 self._scope + 'network'))
-        self._save_vars |= set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                 self._scope + 'optimizer'))
-
-        self._save_vars.add(self.global_step)
-        self._save_vars.add(self._obs_counter)
-        self._saver = tf.train.Saver(var_list=list(self._save_vars), max_to_keep=saver_keep)
-        add_grads_summary(self._grads_vars)
-        add_observation_summary(self.net.input_ph, self.env.obs_shape)
-        tf.summary.histogram('agent/action', self._action_onehot)
+                grads, _ = tf.clip_by_global_norm(grads, gradient_clip)
+            grads_vars = list(zip(grads, self._weights))
+            self._train_op = opt.apply_gradients(grads_vars,
+                                                 global_step=self.global_step)
+        save_vars = set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                          self._scope + 'network'))
+        save_vars |= set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                           self._scope + 'optimizer'))
+        save_vars.add(self.global_step)
+        save_vars.add(self._obs_counter)
+        save_vars.add(self._ep_counter)
+        self._saver = tf.train.Saver(var_list=list(save_vars), max_to_keep=saver_keep)
+        utils_tf.add_grads_summary(grads_vars)
+        utils_tf.add_observation_summary(self.net.input_ph, self.env.obs_shape)
+        tf.summary.histogram('agent/action', action_onehot)
         tf.summary.histogram('agent/action_values', self.net.output)
-        tf.summary.scalar('metrics/loss', self._loss)
-        tf.summary.scalar('agent/learning_rate', self._lr)
-        tf.summary.scalar('metrics/avg_q', tf.reduce_mean(q_next_max))
+        tf.summary.scalar('agent/learning_rate', lr)
+        tf.summary.scalar('metrics/loss', loss)
+        tf.summary.scalar('metrics/avg_Q', tf.reduce_mean(q_next_max))
         self._summary_op = tf.summary.merge_all()
-        self._init_op = tf.global_variables_initializer()
 
     def _train(self, max_steps, update_freq, log_dir, render, target_freq, replay,
                policy, log_freq, test_episodes, ignore_checkpoint):
         avg_reward = reinforceflow.utils.IncrementalAverage()
         ep_reward = 0
-        episode = 0
-        last_log_ep = 0
         writer = tf.summary.FileWriter(log_dir, self.sess.graph)
-        self.sess.run(self._init_op)
+        self.sess.run(tf.global_variables_initializer())
         if not ignore_checkpoint and log_dir and tf.train.latest_checkpoint(log_dir) is not None:
             self.load_weights(log_dir)
         obs = self.env.reset()
-        last_time = time.time()
+        reward_logger = utils_tf.SummaryLogger(self.step_counter, self.obs_counter)
+        last_log_ep = self.ep_counter
         last_step = self.step_counter
-        last_obs = self.obs_counter
         step = self.step_counter
         while step < max_steps:
             obs_counter = self.increment_obs_counter()
@@ -157,60 +148,39 @@ class DQNAgent(BaseDQNAgent):
             if replay.is_ready and obs_counter % update_freq == 0:
                 batch = replay.sample()
                 b_obs, b_action, b_reward, b_obs_next, b_term, b_idxs, b_importances = batch
-                summarize = episode > last_log_ep and step - last_step > log_freq
-                td_error, summary_str = self._train_on_batch(b_obs, b_action, b_reward, b_obs_next,
-                                                             b_term, summarize, b_importances)
-                try:
+                summarize = self.ep_counter > last_log_ep and step - last_step > log_freq
+                td_error, summary_str = self.train_on_batch(b_obs, b_action, b_reward, b_obs_next,
+                                                            b_term, summarize, b_importances)
+                if hasattr(replay, 'update'):
                     replay.update(b_idxs, np.abs(td_error))
-                except AttributeError:
-                    pass
+
                 if step % target_freq == target_freq-1:
                     self.target_update()
 
                 if log_dir and step % log_freq == log_freq-1:
                     self.save_weights(log_dir)
 
-                # Eval & log
                 if summarize:
-                    last_log_ep = episode
-                    step = self.step_counter
-                    num_ep = avg_reward.length
-                    max_r = avg_reward.max
-                    min_r = avg_reward.min
-                    train_r = avg_reward.reset()
-                    test_r = self.test(episodes=test_episodes, copy_env=True).compute_average()
-                    obs_per_sec = (self.obs_counter - last_obs) / (time.time() - last_time)
-                    step_per_sec = (self.step_counter - last_step) / (time.time() - last_time)
-                    last_time = time.time()
                     last_step = step
-                    last_obs = self.obs_counter
-                    logger.info("On-policy eval.: Average R: %.2f. Step: %d. Ep: %d"
-                                % (train_r, step, episode))
-                    logger.info("Greedy eval.: Average R: %.2f. Step: %d. Ep: %d"
-                                % (test_r, step, episode))
-                    logger.info("Performance. Observation/sec: %0.2f. Update/sec: %0.2f."
-                                % (obs_per_sec, step_per_sec))
+                    last_log_ep = self.ep_counter
+                    step = self.step_counter
+                    test_rewards = self.test(episodes=test_episodes, copy_env=True)
+                    reward_summary = reward_logger.summarize(avg_reward, test_rewards,
+                                                             self.ep_counter, step, obs_counter)
+                    writer.add_summary(reward_summary, global_step=step)
+                    eps_log = [tf.Summary.Value(tag='agent/epsilon', simple_value=policy.epsilon)]
+                    writer.add_summary(tf.Summary(value=eps_log), global_step=step)
                     if log_dir and summary_str:
-                        logs = [tf.Summary.Value(tag='metrics/total_ep', simple_value=episode),
-                                tf.Summary.Value(tag='metrics/num_ep', simple_value=num_ep),
-                                tf.Summary.Value(tag='metrics/max_r', simple_value=max_r),
-                                tf.Summary.Value(tag='metrics/min_r', simple_value=min_r),
-                                tf.Summary.Value(tag='metrics/avg_r', simple_value=train_r),
-                                tf.Summary.Value(tag='metrics/test_r', simple_value=test_r),
-                                tf.Summary.Value(tag='agent/epsilon', simple_value=policy.epsilon),
-                                tf.Summary.Value(tag='step/sec', simple_value=step_per_sec),
-                                ]
-                        writer.add_summary(tf.Summary(value=logs), global_step=step)
                         writer.add_summary(summary_str, global_step=step)
             if term:
-                episode += 1
+                self.increment_ep_counter()
                 avg_reward.add(ep_reward)
                 ep_reward = 0
                 obs = self.env.reset()
         writer.close()
 
-    def _train_on_batch(self, obs, actions, rewards, obs_next,
-                        term, summarize=False, importance=None):
+    def train_on_batch(self, obs, actions, rewards, obs_next,
+                       term, summarize=False, importance=None):
         if importance is None:
             importance = [1.0] * len(rewards)
         _, td_error, summary = self.sess.run([self._train_op, self._td_error,

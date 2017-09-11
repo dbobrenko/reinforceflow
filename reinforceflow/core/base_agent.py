@@ -71,11 +71,11 @@ class BaseDiscreteAgent(BaseAgent):
 
 
 @six.add_metaclass(abc.ABCMeta)
-class TableAgent(BaseDiscreteAgent):
+class BaseTableAgent(BaseDiscreteAgent):
     """Base class for Table-based Agent with discrete observation and action space."""
     @abc.abstractmethod
     def __init__(self, env):
-        super(TableAgent, self).__init__(env)
+        super(BaseTableAgent, self).__init__(env)
         if self.env.is_cont_obs:
             raise ValueError('%s does not support environments with continuous '
                              'observation space.' % self.__class__.__name__)
@@ -83,7 +83,7 @@ class TableAgent(BaseDiscreteAgent):
 
 
 @six.add_metaclass(abc.ABCMeta)
-class BaseDQNAgent(BaseDiscreteAgent):
+class BaseDeepAgent(BaseAgent):
     @abc.abstractmethod
     def __init__(self, env, net_factory, name=''):
         """Abstract base class for Deep Q-Network agent.
@@ -97,9 +97,10 @@ class BaseDQNAgent(BaseDiscreteAgent):
             net_factory: (function) Used for building network model.
             name: (str) Agent's name prefix.
         """
-        super(BaseDQNAgent, self).__init__(env=env)
+        super(BaseDeepAgent, self).__init__(env=env)
         self._net_factory = net_factory
         self._scope = '' if not name else name + '/'
+        # Inference Graph
         with tf.variable_scope(self._scope + 'network') as scope:
             self._action_ph = tf.placeholder('int32', [None] + self.env.action_shape, name='action')
             self._reward_ph = tf.placeholder('float32', [None], name='reward')
@@ -107,18 +108,15 @@ class BaseDQNAgent(BaseDiscreteAgent):
                                               output_size=self.env.action_shape[0])
             self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                               scope.name)
-        self.sess = None
-        self._target_net = None
-        self._target_update = None
-        self._saver = None
-        self._init_op = None
-        self._save_vars = set()
-        self._no_op = tf.no_op()
         with tf.variable_scope(self._scope + 'optimizer'):
             self._no_op = tf.no_op()
             self.global_step = tf.Variable(0, trainable=False, name='global_step')
+            self._ep_counter = tf.Variable(0, trainable=False, name='ep_counter')
+            self._ep_counter_inc = self._ep_counter.assign_add(1, use_locking=True)
             self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
             self._obs_counter_inc = self._obs_counter.assign_add(1, use_locking=True)
+        self.sess = None
+        self._saver = None
 
     def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=3):
@@ -143,11 +141,8 @@ class BaseDQNAgent(BaseDiscreteAgent):
     def train(self, **kwargs):
         raise NotImplementedError
 
-    def _train_on_batch(self, obs, actions, rewards, obs_next, term, summarize=False):
-        raise NotImplementedError
-
     def train_on_batch(self, *args, **kwargs):
-        return self._train_on_batch(*args, **kwargs)
+        raise NotImplementedError
 
     def save_weights(self, path, model_name='model.ckpt'):
         if not os.path.exists(path):
@@ -161,35 +156,29 @@ class BaseDQNAgent(BaseDiscreteAgent):
         if tf.gfile.IsDirectory(checkpoint):
             checkpoint = tf.train.latest_checkpoint(checkpoint)
         self._saver.restore(self.sess, save_path=checkpoint)
-        self.target_update()
         logger.info('Checkpoint has been restored from: %s', checkpoint)
 
-    def increment_obs_counter(self):
-        return self.sess.run(self._obs_counter_inc)
+    @property
+    def ep_counter(self):
+        return self.sess.run(self._ep_counter)
+
+    def increment_ep_counter(self):
+        return self.sess.run(self._ep_counter_inc)
 
     @property
     def obs_counter(self):
+        return self.sess.run(self._obs_counter)
+
+    def increment_obs_counter(self):
         return self.sess.run(self._obs_counter_inc)
 
     @property
     def step_counter(self):
         return self.sess.run(self.global_step)
 
-    def predict_action(self, obs, policy=GreedyPolicy()):
-        """Computes action for given observation."""
-        action_values = self.predict_on_batch([obs])
-        return policy.select_action(self.env, action_values)
-
     def predict_on_batch(self, obs_batch):
         """Computes action-values for given batch of observations."""
         return self.sess.run(self.net.output, {self.net.input_ph: obs_batch})
-
-    def target_predict(self, obs):
-        """Computes target network action-values with for given batch of observations."""
-        return self.sess.run(self._target_net.output, {self._target_net.input_ph: obs})
-
-    def target_update(self):
-        self.sess.run(self._target_update)
 
     def close(self):
         if self.sess:
@@ -203,3 +192,29 @@ class BaseDQNAgent(BaseDiscreteAgent):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+
+@six.add_metaclass(abc.ABCMeta)
+class BaseDQNAgent(BaseDeepAgent, BaseDiscreteAgent):
+    def __init__(self, env, net_factory, name=''):
+        super(BaseDQNAgent, self).__init__(env, net_factory, name)
+        self._target_net = None
+        self._target_update = None
+        self._greedy_policy = GreedyPolicy()
+
+    def load_weights(self, checkpoint):
+        super(BaseDQNAgent, self).load_weights(checkpoint)
+        self.target_update()
+
+    def predict_action(self, obs):
+        """Computes action with greedy policy for given observation."""
+        action_values = self.predict_on_batch([obs])
+        return self._greedy_policy.select_action(self.env, action_values)
+
+    def target_predict(self, obs):
+        """Computes target network action-values with for given batch of observations."""
+        return self.sess.run(self._target_net.output, {self._target_net.input_ph: obs})
+
+    def target_update(self):
+        """Updates target network."""
+        self.sess.run(self._target_update)

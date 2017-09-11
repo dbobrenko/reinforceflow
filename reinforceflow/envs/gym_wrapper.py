@@ -42,7 +42,7 @@ class GymWrapper(EnvWrapper):
     def _step(self, action):
         gym_action = self._rf_to_gym(action, self.env.action_space)
         obs, reward, done, info = self.env.step(gym_action)
-        rf_obs = self._rf_to_gym(obs, self.env.observation_space)
+        rf_obs = self._gym_to_rf(obs, self.env.observation_space)
         return rf_obs, reward, done, info
 
     def _reset(self):
