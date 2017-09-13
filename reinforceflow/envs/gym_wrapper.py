@@ -51,6 +51,9 @@ class GymWrapper(EnvWrapper):
     def action_sample(self):
         return self._gym_to_rf(self.env.action_space.sample(), self.env.action_space)
 
+    def render(self):
+        self.env.render()
+
     @classmethod
     def _gym_to_rf(cls, sample, space_type):
         if isinstance(space_type, spaces.Box):

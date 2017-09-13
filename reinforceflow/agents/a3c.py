@@ -178,7 +178,7 @@ class A3CAgent(BaseDeepAgent):
                     self.save_weights(log_dir)
             except KeyboardInterrupt:
                 logger.info('Caught Ctrl+C! Stopping training process.')
-                self.request_stop = True
+        self.request_stop = True
         self.save_weights(log_dir)
         logger.info('Training finished!')
         self.writer.close()

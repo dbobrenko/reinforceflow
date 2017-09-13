@@ -23,6 +23,7 @@ class EnvWrapper(object):
             _step
             _reset
             action_sample
+            (Optional) render
 
         Args:
             env: Raw environment instance.
@@ -59,6 +60,10 @@ class EnvWrapper(object):
 
     def action_sample(self):
         """Samples random action from environment's action space."""
+        raise NotImplementedError
+
+    def render(self):
+        """Renders current observation."""
         raise NotImplementedError
 
     def reset(self):

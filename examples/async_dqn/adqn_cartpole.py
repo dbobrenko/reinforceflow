@@ -31,3 +31,5 @@ agent.train(num_threads=8,
             log_freq=5000,
             ignore_checkpoint=True,
             log_dir='/tmp/reinforceflow/%s/async_dqn/adam/' % env_name)
+
+agent.test(10, render=True, max_fps=30)

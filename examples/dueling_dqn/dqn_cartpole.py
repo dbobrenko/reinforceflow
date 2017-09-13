@@ -32,3 +32,5 @@ agent.train(max_steps=steps,
             log_freq=500,
             ignore_checkpoint=True,
             log_dir='/tmp/reinforceflow/%s/dueling_dqn/uniform' % env_name)
+
+agent.test(10, render=True, max_fps=30)

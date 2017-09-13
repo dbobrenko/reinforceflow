@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import time
 from collections import defaultdict
 import abc
 import six
@@ -28,7 +29,7 @@ class BaseAgent(object):
     def predict_action(self, *args, **kwargs):
         raise NotImplementedError
 
-    def test(self, episodes, max_ep_steps=int(1e5), render=False, copy_env=False):
+    def test(self, episodes, max_ep_steps=int(1e5), render=False, copy_env=False, max_fps=None):
         """Tests agent's performance with specified policy on a given number of episodes.
 
         Args:
@@ -36,20 +37,27 @@ class BaseAgent(object):
             max_ep_steps: (int) Maximum allowed steps per episode.
             render: (bool) Enables game screen rendering.
             copy_env: (bool) Performs tests on the copy of environment instance.
+            max_fps: (int) Maximum allowed fps. To disable fps limitation, pass None.
 
         Returns: (utils.IncrementalAverage) Average reward per episode.
         """
+        # In seconds
+        delta_frame = 1. / max_fps if max_fps else 0
         env = self.env.copy() if copy_env else self.env
         ep_rewards = reinforceflow.utils.IncrementalAverage()
         for _ in range(episodes):
             reward_accum = 0
             obs = env.reset()
             for _ in range(max_ep_steps):
-                if render:
-                    env.render()
+                start_time = time.time()
                 action = self.predict_action(obs)
                 obs, r, terminal, info = env.step(action)
                 reward_accum += r
+                if render:
+                    env.render()
+                    if delta_frame > 0:
+                        delay = max(0, delta_frame - (time.time() - start_time))
+                        time.sleep(delay)
                 if terminal:
                     break
             ep_rewards.add(reward_accum)

@@ -40,13 +40,6 @@ class AsyncDQNAgent(BaseDQNAgent):
         self.writer = None
         self.opt = None
 
-    def _write_summary(self, test_episodes=3):
-        test_rewards = self.test(episodes=test_episodes)
-        reward_summary = self._reward_logger.summarize(None, test_rewards, self.ep_counter,
-                                                       self.step_counter, self.obs_counter,
-                                                       scope=self._scope)
-        self.writer.add_summary(reward_summary, global_step=self.obs_counter)
-
     def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
         """Builds training graph.
@@ -197,7 +190,7 @@ class AsyncDQNAgent(BaseDQNAgent):
                     self.target_update()
             except KeyboardInterrupt:
                 logger.info('Caught Ctrl+C! Stopping training process.')
-                self.request_stop = True
+        self.request_stop = True
         self.save_weights(log_dir)
         logger.info('Training finished!')
         self.writer.close()
