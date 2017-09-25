@@ -12,13 +12,13 @@ except ImportError:
 from reinforceflow.agents.dqn import DQNAgent
 from reinforceflow.nets import MLPFactory
 from reinforceflow.core.policy import EGreedyPolicy
-from reinforceflow.envs.env_factory import EnvFactory
+from reinforceflow.envs.gym_wrapper import GymWrapper
 from reinforceflow.core.replay import ExperienceReplay, ProportionalReplay
 reinforceflow.set_random_seed(555)
 
 
 env_name = 'CartPole-v0'
-env = EnvFactory.make(env_name, use_smart_wrap=True)
+env = GymWrapper(env_name)
 steps = 30000
 agent = DQNAgent(env, net_factory=MLPFactory(), use_double=True, use_gpu=True)
 agent.train(max_steps=steps,
@@ -30,8 +30,9 @@ agent.train(max_steps=steps,
             replay=ExperienceReplay(capacity=steps, batch_size=32, min_size=1024),
             # replay=ProportionalReplay(capacity=steps, batch_size=32, min_size=1024),
             policy=EGreedyPolicy(eps_start=1.0, eps_final=0.1, anneal_steps=20000),
-            log_freq=500,
-            ignore_checkpoint=True,
+            log_every_sec=30,
+            ignore_checkpoint=True,  # Always starts training from scratch
+            test_render=True,  # Renders evaluation tests.
             log_dir='/tmp/reinforceflow/%s/double_dqn/uniform' % env_name)
 
 agent.test(10, render=True, max_fps=30)

@@ -140,7 +140,9 @@ def add_observation_summary(obs, obs_shape):
     """
     if len(obs_shape) == 1:
         tf.summary.histogram('observation', obs)
-    elif len(obs_shape) <= 3:
+    elif len(obs_shape) == 2:
+        tf.summary.image('observation', obs)
+    elif len(obs_shape) == 3 and obs_shape[2] in (1, 3, 4):
         tf.summary.image('observation', obs)
     else:
         logger.warn('Cannot create summary for observation with shape %s'
@@ -210,8 +212,8 @@ class SummaryLogger(object):
                      tf.Summary.Value(tag=scope + 'metrics/min_greedy_R', simple_value=test_min_r)]
         if print_info:
             name = scope.replace('/', '') + '. ' if len(scope) else scope
-            print_info = "%s%sUpdate step: %d. Obs: %d. Ep: %d" \
-                         % (name, print_info, step_counter, obs_counter, ep_counter)
+            print_info = "%s%sObs: %d. Update step: %d. Ep: %d" \
+                         % (name, print_info, obs_counter, step_counter, ep_counter)
             logger.info(print_info)
         if log_performance:
             step_per_sec = (step_counter - self.last_step) / (time.time() - self.last_time)

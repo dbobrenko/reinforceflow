@@ -54,4 +54,3 @@ def test_mintree_min():
     for i in dataset_actual:
         tree.append(i)
     assert tree.min() == min(dataset_actual)
-test_mintree_min()

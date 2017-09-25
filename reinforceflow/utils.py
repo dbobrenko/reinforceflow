@@ -87,10 +87,7 @@ def one_hot(shape, idx):
         (nd.array) One-hot encoded vector.
     """
     vec = np.zeros(shape, dtype=np.uint8)
-    try:
-        vec[idx] = 1
-    except IndexError:
-        pass
+    vec[idx] = 1
     return vec
 
 

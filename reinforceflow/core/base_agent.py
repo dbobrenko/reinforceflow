@@ -13,6 +13,7 @@ import tensorflow as tf
 
 import reinforceflow.utils
 from reinforceflow.core import GreedyPolicy
+from reinforceflow.core import Tuple, Continious
 from reinforceflow import logger
 
 
@@ -70,10 +71,10 @@ class BaseDiscreteAgent(BaseAgent):
     @abc.abstractmethod
     def __init__(self, env):
         super(BaseDiscreteAgent, self).__init__(env)
-        if self.env.is_cont_action:
+        if isinstance(self.env.action_space, Continious):
             raise ValueError('%s does not support environments with continuous '
                              'action space.' % self.__class__.__name__)
-        if self.env.is_multiaction:
+        if isinstance(self.env.action_space, Tuple):
             raise ValueError('%s does not support environments with multiple '
                              'action spaces.' % self.__class__.__name__)
 
@@ -84,7 +85,7 @@ class BaseTableAgent(BaseDiscreteAgent):
     @abc.abstractmethod
     def __init__(self, env):
         super(BaseTableAgent, self).__init__(env)
-        if self.env.is_cont_obs:
+        if isinstance(self.env.obs_shape, Continious):
             raise ValueError('%s does not support environments with continuous '
                              'observation space.' % self.__class__.__name__)
         self.q_table = defaultdict(lambda: np.zeros(self.env.action_shape))
@@ -102,7 +103,7 @@ class BaseDeepAgent(BaseAgent):
 
         Attributes:
             env: Environment instance.
-            net_factory: (function) Used for building network model.
+            net_factory: (nets.AbstractFactory) Used for building network model.
             name: (str) Agent's name prefix.
         """
         super(BaseDeepAgent, self).__init__(env=env)
@@ -110,10 +111,11 @@ class BaseDeepAgent(BaseAgent):
         self._scope = '' if not name else name + '/'
         # Inference Graph
         with tf.variable_scope(self._scope + 'network') as scope:
-            self._action_ph = tf.placeholder('int32', [None] + self.env.action_shape, name='action')
+            self._action_ph = tf.placeholder('int32', [None, *self.env.action_space.shape],
+                                             name='action')
             self._reward_ph = tf.placeholder('float32', [None], name='reward')
-            self.net = self._net_factory.make(input_shape=[None] + self.env.obs_shape,
-                                              output_size=self.env.action_shape[0])
+            self.net = self._net_factory.make(input_space=self.env.obs_space,
+                                              output_space=self.env.action_space)
             self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                               scope.name)
         with tf.variable_scope(self._scope + 'optimizer'):

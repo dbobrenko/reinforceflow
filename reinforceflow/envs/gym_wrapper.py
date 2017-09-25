@@ -3,74 +3,131 @@ from __future__ import division
 from __future__ import print_function
 
 import six
-try:
-    import gym
-    from gym import spaces
-except ImportError:
-    gym = None
-
 import numpy as np
+import gym
+from gym import spaces
 import reinforceflow
-from reinforceflow.envs.env_wrapper import EnvWrapper
+from reinforceflow.envs.env_wrapper import Env
+from reinforceflow.core.spaces import DiscreteOneHot, Tuple, Continious
 from reinforceflow.utils import stack_observations, image_preprocess, one_hot
 
 
-class GymWrapper(EnvWrapper):
+def to_rf_space(space):
+    """Converts Gym space instance into Reinforceflow's."""
+    if isinstance(space, spaces.Discrete):
+        return DiscreteOneHot(space.n)
+
+    if isinstance(space, spaces.MultiDiscrete):
+        # space.low > 0 will lead to unused first n actions.
+        # return Tuple([DiscreteOneHot(n) for n in space.high])
+        raise ValueError("MultiDiscrete spaces aren't supported yet.")
+
+    if isinstance(space, spaces.MultiBinary):
+        return Tuple([DiscreteOneHot(2) for _ in space.n])
+
+    if isinstance(space, spaces.Box):
+        return Continious(space.low, space.high)
+
+    if isinstance(space, spaces.Tuple):
+        converted_spaces = []
+        for sub_space in space.spaces:
+            converted_spaces.append(to_rf_space(sub_space))
+        return Tuple(*converted_spaces)
+    raise ValueError("Unsupported space %s." % space)
+
+
+def make_gym2rf_converter(space):
+    """Makes space converter function that maps space samples Gym -> rf."""
+    # TODO: add spaces.MultiDiscrete support.
+    if isinstance(space, spaces.Discrete):
+        def converter(sample):
+            return one_hot(space.n, sample)
+        return converter
+
+    if isinstance(space, spaces.MultiBinary):
+        def converter(sample):
+            return tuple([one_hot(2, s) for s in sample])
+        return converter
+
+    if isinstance(space, spaces.Box):
+        return lambda sample: sample
+
+    if isinstance(space, spaces.Tuple):
+        sub_converters = []
+        for sub_space in space.spaces:
+            sub_converters.append(make_gym2rf_converter(sub_space))
+
+        def converter(sample):
+            converted_tuple = []
+            for sub_sample, sub_converter in zip(sample, sub_converters):
+                converted_tuple.append(sub_converter(sub_sample))
+            return tuple(converted_tuple)
+        return converter
+    raise ValueError("Unsupported space %s." % space)
+
+
+def make_rf2gym_converter(space):
+    """Makes space converter function that maps space samples rf -> Gym."""
+    # TODO: add spaces.MultiDiscrete support.
+    if isinstance(space, spaces.Discrete):
+        def converter(sample):
+            return np.argmax(sample)
+        return converter
+
+    if isinstance(space, spaces.MultiBinary):
+        def converter(sample):
+            return tuple([np.argmax(s) for s in sample])
+        return converter
+
+    if isinstance(space, spaces.Box):
+        return lambda sample: sample
+
+    if isinstance(space, spaces.Tuple):
+        sub_converters = []
+        for sub_space in space.spaces:
+            sub_converters.append(make_rf2gym_converter(sub_space))
+
+        def converter(sample):
+            converted_tuple = []
+            for sub_sample, sub_converter in zip(sample, sub_converters):
+                converted_tuple.append(sub_converter(sub_sample))
+            return tuple(converted_tuple)
+        return converter
+    raise ValueError("Unsupported space %s." % space)
+
+
+class GymWrapper(Env):
     """Light wrapper around OpenAI Gym and Universe environments.
-    See `EnvWrapper`.
+    See `Env`.
     """
     def __init__(self, env, action_repeat=1, obs_stack=1):
-        if gym is None:
-            raise ImportError("Cannot import OpenAI Gym. In order to use Gym environments "
-                              "you must install it first. Follow the instructions on "
-                              "https://github.com/openai/gym#installation")
         if isinstance(env, six.string_types):
             env = gym.make(env)
-        if isinstance(env.action_space, spaces.Tuple):
-            raise ValueError("Gym environments with tuple spaces aren't supported yet.")
-        continious_action = isinstance(env.action_space, spaces.Box)
-        continious_observation = isinstance(env.observation_space, spaces.Box)
+        if isinstance(env.action_space, spaces.MultiDiscrete):
+            raise ValueError("Gym environments with MultiDiscrete spaces aren't supported yet.")
+
         super(GymWrapper, self).__init__(env,
-                                         continious_action=continious_action,
-                                         continious_observation=continious_observation,
+                                         obs_space=to_rf_space(env.observation_space),
+                                         action_space=to_rf_space(env.action_space),
                                          action_repeat=action_repeat,
                                          obs_stack=obs_stack)
+        self._obs_to_rf = make_gym2rf_converter(self.obs_space)
+        self._action_to_rf = make_rf2gym_converter(self.action_space)
+        self._action_to_gym = make_rf2gym_converter(self.action_space)
         seed = reinforceflow.get_random_seed()
         if seed and hasattr(self.env, 'seed'):
             self.env.seed(seed)
 
     def _step(self, action):
-        gym_action = self._rf_to_gym(action, self.env.action_space)
+        gym_action = self._action_to_gym(action)
         obs, reward, done, info = self.env.step(gym_action)
-        rf_obs = self._gym_to_rf(obs, self.env.observation_space)
-        return rf_obs, reward, done, info
+        return self._obs_to_rf(obs), reward, done, info
 
     def _reset(self):
-        return self._gym_to_rf(self.env.reset(), self.env.observation_space)
-
-    def action_sample(self):
-        return self._gym_to_rf(self.env.action_space.sample(), self.env.action_space)
+        return self._obs_to_rf(self.env.reset())
 
     def render(self):
         self.env.render()
-
-    @classmethod
-    def _gym_to_rf(cls, sample, space_type):
-        if isinstance(space_type, spaces.Box):
-            return sample
-        elif isinstance(space_type, spaces.Discrete):
-            return one_hot(space_type.n, sample)
-        else:
-            raise ValueError("Unsupported Gym space: %s." % space_type)
-
-    @classmethod
-    def _rf_to_gym(cls, sample, space_type):
-        if isinstance(space_type, spaces.Box):
-            return sample
-        elif isinstance(space_type, spaces.Discrete):
-            return np.argmax(sample)
-        else:
-            raise ValueError("Unsupported Gym space: %s." % space_type)
 
 
 class GymPixelWrapper(GymWrapper):
@@ -82,21 +139,31 @@ class GymPixelWrapper(GymWrapper):
                  resize_width=None,
                  resize_height=None,
                  merge_last_frames=False):
-        self.height = resize_height
-        self.width = resize_width
-        self.to_gray = to_gray
-        self._use_merged_frame = merge_last_frames
         super(GymPixelWrapper, self).__init__(env,
                                               action_repeat=action_repeat,
                                               obs_stack=obs_stack)
-        if len(self.obs_shape) not in [2, 3]:
-            raise ValueError('%s expects observation space with pixel inputs.'
-                             % self.__class__.__name__)
+        if not isinstance(self.obs_space, Continious) \
+           or len(self.obs_space.shape) not in [2, 3]:
+            raise ValueError('%s expects observation space with pixel inputs; '
+                             'i.e 2-D or 3-D observation space.' % self.__class__.__name__)
+        self.height = resize_height
+        self.width = resize_width
+        self.to_gray = to_gray
+        new_shape = list(self.obs_space.shape)
+        new_shape[0] = resize_height if resize_height else new_shape[0]
+        new_shape[1] = resize_width if resize_width else new_shape[1]
+        if len(new_shape) == 2:
+            new_shape.append(1)  # Append channel axis
+        elif to_gray and new_shape[2] > obs_stack:
+            new_shape[1] = obs_stack
+        self.obs_space.reshape(tuple(new_shape))
+
+        self._use_merged_frame = merge_last_frames
         self.has_lives = hasattr(self.env, 'ale') and hasattr(self.env.ale, 'lives')
         self._prev_obs = None
 
     def step(self, action):
-        """See `EnvWrapper.step`."""
+        """See `Env.step`."""
         start_lives = self.env.ale.lives() if self.has_lives else 0
         reward_total = 0
         done = False
@@ -118,8 +185,7 @@ class GymPixelWrapper(GymWrapper):
         return obs, reward_total, done, info
 
     def _reset(self):
-        return self._gym_to_rf(self._obs_preprocess(self.env.reset()),
-                               self.env.observation_space)
+        return self._obs_to_rf(self._obs_preprocess(self.env.reset()))
 
     def _obs_preprocess(self, obs):
         """Applies such image preprocessing as resizing and converting to grayscale.

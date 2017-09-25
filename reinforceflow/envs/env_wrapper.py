@@ -3,52 +3,54 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-
-import numpy as np
+import abc
+import six
 from six.moves import range
 from reinforceflow.utils import stack_observations
+from reinforceflow.core import Tuple
 
 
-class EnvWrapper(object):
+@six.add_metaclass(abc.ABCMeta)
+class Env(object):
     def __init__(self,
                  env,
-                 continious_action,
-                 continious_observation,
+                 obs_space,
+                 action_space,
                  action_repeat=1,
                  obs_stack=1):
         """Base environment interface.
 
-        In order to wrap a custom environment or create a new one,
+        In order to wrap an existing environment or create a new one,
         the following methods must be implemented:
             _step
             _reset
-            action_sample
             (Optional) render
 
         Args:
             env: Raw environment instance.
-            continious_action: (bool) Whether action space is continious.
-            continious_observation: (bool) Whether observation space consists
-                                    from continious values. If true, table-based agents
-                                    won't be able to use this environment.
             action_repeat: (int) The number of steps on which the action will be repeated.
                            To disable, pass 1, 0 or None.
+            obs_space: (core.spaces.Space) Observation space specification.
+            action_space: (core.spaces.Space) Action space specification.
             obs_stack: (int) The length of stacked observations.
-                       Used for providing a short-term memory. To disable, pass 1, 0 or None.
+                       Provided obs_space shape will be automatically modified.
+                       Doesn't works for Tuple spaces. To disable, pass 1, 0 or None.
         """
         self.env = env
-        self.is_cont_action = continious_action
-        self.is_cont_obs = continious_observation
+        self.obs_space = obs_space
+        self.action_space = action_space
         if action_repeat < 0:
             raise ValueError("Action repeat number must be higher or equal to 0.")
         if obs_stack < 0:
             raise ValueError("Observation stack length must be higher or equal to 0.")
         self._action_repeat = action_repeat or 1
         self._obs_stack_len = obs_stack or 1
+        if isinstance(self.obs_space, Tuple) and obs_stack > 1:
+            raise ValueError("Observation stack does not works for Tuple spaces.")
+        new_shape = list(self.obs_space.shape)
+        new_shape[-1] = self.obs_space.shape[-1] * obs_stack
+        self.obs_space.reshape(tuple(new_shape))
         self._obs_stack = None
-        self.obs_shape = list(np.shape(self.reset()))
-        self.action_shape = list(np.shape(self.action_sample()))
-        self.is_multiaction = len(self.action_shape) > 1
 
     def _step(self, action):
         """See `step`."""
@@ -56,10 +58,6 @@ class EnvWrapper(object):
 
     def _reset(self):
         """See `reset`."""
-        raise NotImplementedError
-
-    def action_sample(self):
-        """Samples random action from environment's action space."""
         raise NotImplementedError
 
     def render(self):

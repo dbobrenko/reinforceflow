@@ -10,13 +10,18 @@ except ImportError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
     import reinforceflow
 from reinforceflow.agents.async_dqn import AsyncDQNAgent
-from reinforceflow.envs.env_factory import EnvFactory
+from reinforceflow.envs.gym_wrapper import GymPixelWrapper
 from reinforceflow.core.policy import EGreedyPolicy
 from reinforceflow.nets import DQNFactory
 reinforceflow.set_random_seed(555)
 
-env_name = 'SpaceInvaders-v0'
-env = EnvFactory.make(env_name, use_smart_wrap=True)
+env_name = 'SpaceInvadersNoFrameskip-v4'
+env = GymPixelWrapper(env_name,
+                      action_repeat=4,
+                      obs_stack=4,
+                      resize_width=84,
+                      resize_height=84,
+                      to_gray=True)
 steps = 80000000
 agent = AsyncDQNAgent(env, net_factory=DQNFactory(), use_gpu=True)
 policies = [EGreedyPolicy(eps_start=1.0, eps_final=final, anneal_steps=4000000)
@@ -30,5 +35,5 @@ agent.train(num_threads=8,
             target_freq=40000,
             gamma=0.99,
             batch_size=5,
-            log_freq=100000,
+            log_every_sec=100000,
             log_dir='/tmp/reinforceflow/%s/async_dqn/adam/' % env_name)

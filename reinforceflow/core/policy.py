@@ -14,7 +14,7 @@ class BasePolicy(object):
 
 class GreedyPolicy(BasePolicy):
     def select_action(self, env, prediction):
-        return one_hot(env.action_shape, np.argmax(prediction))
+        return one_hot(env.action_space.shape, np.argmax(prediction))
 
 
 class EGreedyPolicy(BasePolicy):
@@ -29,9 +29,9 @@ class EGreedyPolicy(BasePolicy):
     def select_action(self, env, prediction, step):
         self.epsilon = self._update_epsilon(step)
         if random.random() > self.epsilon:
-            return one_hot(env.action_shape, np.argmax(prediction))
+            return one_hot(env.action_space.shape, np.argmax(prediction))
         else:
-            return env.action_sample()
+            return env.action_space.sample()
 
     def _update_epsilon(self, step):
         if step >= self._anneal_steps:

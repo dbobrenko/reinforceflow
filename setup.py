@@ -8,6 +8,7 @@ from reinforceflow import __version__
 
 install_requires = [
     'numpy',
+    'gym>=0.9.1'
     'scikit-image',
     'six',
     'matplotlib',
@@ -17,7 +18,6 @@ install_requires = [
 extras_require = {
     'tf': ['tensorflow>=1.0.1'],
     'tf-gpu': ['tensorflow-gpu>=1.0.1'],
-    'gym': ['gym>=0.9.1'],
     'universe': ['universe>=0.21.3']
 }
 
