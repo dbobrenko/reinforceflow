@@ -8,7 +8,7 @@ from reinforceflow import __version__
 
 install_requires = [
     'numpy',
-    'gym>=0.9.1'
+    'gym>=0.9.1',
     'scikit-image',
     'six',
     'matplotlib',
