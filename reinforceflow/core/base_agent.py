@@ -111,7 +111,7 @@ class BaseDeepAgent(BaseAgent):
         self._scope = '' if not name else name + '/'
         # Inference Graph
         with tf.variable_scope(self._scope + 'network') as scope:
-            self._action_ph = tf.placeholder('int32', [None, *self.env.action_space.shape],
+            self._action_ph = tf.placeholder('int32', [None] + list(self.env.action_space.shape),
                                              name='action')
             self._reward_ph = tf.placeholder('float32', [None], name='reward')
             self.net = self._net_factory.make(input_space=self.env.obs_space,

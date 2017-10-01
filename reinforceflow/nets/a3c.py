@@ -33,7 +33,7 @@ class A3CConv(AbstractModel):
         if isinstance(input_space, Tuple) or isinstance(output_space, Tuple):
             raise ValueError('For tuple action and observation spaces '
                              'consider implementing custom network architecture.')
-        self._input_ph = tf.placeholder('float32', shape=[None, *input_space.shape], name='inputs')
+        self._input_ph = tf.placeholder('float32', shape=[None] + list(input_space.shape), name='inputs')
         net, end_points = make_dqn_body(self.input_ph, trainable)
         end_points['fc1'] = layers.fully_connected(net, num_outputs=512, activation_fn=tf.nn.relu,
                                                    scope='fc1', trainable=trainable)
@@ -69,7 +69,8 @@ class A3CMLP(AbstractModel):
         if isinstance(input_space, Tuple) or isinstance(output_space, Tuple):
             raise ValueError('For tuple action and observation spaces '
                              'consider implementing custom network architecture.')
-        self._input_ph = tf.placeholder('float32', shape=[None, *input_space.shape], name='inputs')
+        self._input_ph = tf.placeholder('float32', shape=[None] + list(input_space.shape),
+                                        name='inputs')
         end_points = {}
         net = layers.flatten(self._input_ph)
         for i, units in enumerate(layer_sizes):

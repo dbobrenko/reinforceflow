@@ -52,7 +52,8 @@ class DuelingMLPModel(AbstractModel):
         if isinstance(input_space, Tuple) or isinstance(output_space, Tuple):
             raise ValueError('For tuple action and observation spaces '
                              'consider implementing custom network architecture.')
-        self._input_ph = tf.placeholder('float32', shape=[None, *input_space.shape], name='inputs')
+        self._input_ph = tf.placeholder('float32', shape=[None] + list(input_space.shape),
+                                        name='inputs')
 
         end_points = {}
         net = layers.flatten(self.input_ph)
@@ -89,7 +90,8 @@ class DuelingDQNModel(AbstractModel):
         if isinstance(input_space, Tuple) or isinstance(output_space, Tuple):
             raise ValueError('For tuple action and observation spaces '
                              'consider implementing custom network architecture.')
-        self._input_ph = tf.placeholder('float32', shape=[None, *input_space.shape], name='inputs')
+        self._input_ph = tf.placeholder('float32', shape=[None] + list(input_space.shape),
+                                        name='inputs')
         net, end_points = make_dqn_body(self.input_ph, trainable)
         out, dueling_endpoints = make_dueling_header(input_layer=net,
                                                      output_size=output_space.shape[0],

@@ -26,7 +26,8 @@ class MLPModel(AbstractModel):
             raise ValueError('For tuple action and observation spaces '
                              'consider implementing custom network architecture.')
         end_points = {}
-        self._input_ph = tf.placeholder('float32', shape=[None, *input_space.shape], name='inputs')
+        self._input_ph = tf.placeholder('float32', shape=[None] + list(input_space.shape),
+                                        name='inputs')
         net = self._input_ph
         for i, units in enumerate(layer_sizes):
             name = 'fc%d' % i
