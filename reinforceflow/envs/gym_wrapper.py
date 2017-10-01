@@ -155,7 +155,7 @@ class GymPixelWrapper(GymWrapper):
         if len(new_shape) == 2:
             new_shape.append(1)  # Append channel axis
         elif to_gray and new_shape[2] > obs_stack:
-            new_shape[1] = obs_stack
+            new_shape[2] = obs_stack
         self.obs_space.reshape(tuple(new_shape))
 
         self._use_merged_frame = merge_last_frames

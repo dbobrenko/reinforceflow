@@ -36,6 +36,6 @@ agent.train(num_threads=8,
             target_freq=40000,
             gamma=0.99,
             batch_size=5,
-            log_every_sec=100000,
+            log_every_sec=3600,
             log_dir='/tmp/reinforceflow/%s/a3c/adam/' % env_name)
 
