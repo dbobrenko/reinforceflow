@@ -245,7 +245,7 @@ class _ThreadDQNAgent(BaseDQNAgent, Thread):
                              for i in range(len(self._weights))]
         add_grads_summary(grads_vars)
         with tf.variable_scope(self._scope):
-            add_observation_summary(self.net.input_ph, self.env.obs_space.shape)
+            add_observation_summary(self.net.input_ph, self.env)
             tf.summary.histogram('action', action_onehot)
             tf.summary.histogram('action_values', self.net.output)
             tf.summary.scalar('loss', loss)

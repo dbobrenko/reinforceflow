@@ -254,7 +254,7 @@ class _ThreadA3CAgent(BaseDeepAgent, Thread):
                              for i in range(len(self._weights))]
         add_grads_summary(grads_vars)
         with tf.variable_scope(self._scope):
-            add_observation_summary(self.net.input_ph, self.env.obs_space.shape)
+            add_observation_summary(self.net.input_ph, self.env)
             tf.summary.histogram('output_policy', self.net.output)
             tf.summary.histogram('policy_log_prob', policy_logp)
             tf.summary.scalar('output_value', tf.reduce_mean(self.net.output_value))

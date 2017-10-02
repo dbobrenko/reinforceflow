@@ -3,7 +3,7 @@ import sys
 from setuptools import setup, find_packages
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'reinforceflow'))
-from reinforceflow import __version__
+from reinforceflow.version import version
 
 
 install_requires = [
@@ -22,7 +22,7 @@ extras_require = {
 }
 
 setup(name='reinforceflow',
-      version=__version__,
+      version=version,
       description='Reinforcement Learning framework based on TensorFlow and OpenAI Gym',
       url='https://github.com/dbobrenko/reinforceflow',
       author='Dmytro Bobrenko',
@@ -33,4 +33,3 @@ setup(name='reinforceflow',
       install_requires=install_requires,
       extras_require=extras_require,
       zip_safe=False)
-

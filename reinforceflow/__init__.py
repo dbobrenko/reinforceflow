@@ -1,14 +1,14 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
-import logging
 import sys
 import random
-import tensorflow as tf
+import logging
 import numpy as np
+import tensorflow as tf
+from reinforceflow.version import version as __version__
 
-__version__ = '0.2.4'
-__RANDOM_SEED__ = None
+__RANDOM_SEED__ = 0
 
 
 def set_random_seed(seed):
@@ -41,6 +41,7 @@ def logger_setup():
 def undo_logger_setup():
     logger.removeHandler(handler)
     logger.setLevel(logging.NOTSET)
+
 
 logger_setup()
 

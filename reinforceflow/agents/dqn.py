@@ -115,7 +115,7 @@ class DQNAgent(BaseDQNAgent):
         save_vars.add(self._ep_counter)
         self._saver = tf.train.Saver(var_list=list(save_vars), max_to_keep=saver_keep)
         utils_tf.add_grads_summary(grads_vars)
-        utils_tf.add_observation_summary(self.net.input_ph, self.env.obs_space.shape)
+        utils_tf.add_observation_summary(self.net.input_ph, self.env)
         tf.summary.histogram('agent/action', action_onehot)
         tf.summary.histogram('agent/action_values', self.net.output)
         tf.summary.scalar('agent/learning_rate', lr)

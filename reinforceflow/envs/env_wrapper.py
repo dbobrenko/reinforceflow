@@ -48,8 +48,9 @@ class Env(object):
         if isinstance(self.obs_space, Tuple) and obs_stack > 1:
             raise ValueError("Observation stack does not works for Tuple spaces.")
         new_shape = list(self.obs_space.shape)
-        new_shape[-1] = self.obs_space.shape[-1] * obs_stack
-        self.obs_space.reshape(tuple(new_shape))
+        if obs_stack > 1:
+            new_shape[-1] = self.obs_space.shape[-1] * obs_stack
+            self.obs_space.reshape(tuple(new_shape))
         self._obs_stack = None
 
     def _step(self, action):
@@ -100,3 +101,8 @@ class Env(object):
 
     def copy(self):
         return copy.deepcopy(self)
+
+    @property
+    def obs_stack(self):
+        """Observation stack length."""
+        return self._obs_stack_len

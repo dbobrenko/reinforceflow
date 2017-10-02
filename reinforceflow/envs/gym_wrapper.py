@@ -142,20 +142,20 @@ class GymPixelWrapper(GymWrapper):
         super(GymPixelWrapper, self).__init__(env,
                                               action_repeat=action_repeat,
                                               obs_stack=obs_stack)
-        if not isinstance(self.obs_space, Continious) \
-           or len(self.obs_space.shape) not in [2, 3]:
+        if not isinstance(self.obs_space, Continious) or len(self.obs_space.shape) != 3:
             raise ValueError('%s expects observation space with pixel inputs; '
-                             'i.e 2-D or 3-D observation space.' % self.__class__.__name__)
-        self.height = resize_height
-        self.width = resize_width
-        self.to_gray = to_gray
+                             'i.e. 3-D tensor (H, W, C).' % self.__class__.__name__)
+        # if self.obs_space.shape[-1] not in [1, 3]:
+        #     raise ValueError('%s expects input observations '
+        #                      'with channel size equal to 1 or 3.' % self.__class__.__name__)
+        self._height = resize_height
+        self._width = resize_width
+        self._to_gray = to_gray
         new_shape = list(self.obs_space.shape)
         new_shape[0] = resize_height if resize_height else new_shape[0]
         new_shape[1] = resize_width if resize_width else new_shape[1]
-        if len(new_shape) == 2:
-            new_shape.append(1)  # Append channel axis
-        elif to_gray and new_shape[2] > obs_stack:
-            new_shape[2] = obs_stack
+        if to_gray:
+            new_shape[-1] = obs_stack
         self.obs_space.reshape(tuple(new_shape))
 
         self._use_merged_frame = merge_last_frames
@@ -198,9 +198,21 @@ class GymPixelWrapper(GymWrapper):
             (nd.array) Preprocessed 3-D observation.
         """
         obs = image_preprocess(obs, resize_height=self.height,
-                               resize_width=self.width, to_gray=self.to_gray)
+                               resize_width=self.width, to_gray=self._to_gray)
         if self._use_merged_frame and self._prev_obs is not None:
             prev_obs = self._prev_obs
             self._prev_obs = obs
             obs = np.maximum.reduce([obs, prev_obs]) if prev_obs else obs
         return obs
+
+    @property
+    def height(self):
+        return self._height
+
+    @property
+    def width(self):
+        return self._width
+
+    @property
+    def is_grayscale(self):
+        return self._to_gray

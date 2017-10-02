@@ -6,6 +6,11 @@ import time
 import six
 import tensorflow as tf
 from tensorflow.python.framework import ops
+# try:
+#     from tensorflow.python.framework import ops
+# except ImportError:
+#     from tensorflow.python import ops
+from reinforceflow.envs import Env, GymPixelWrapper
 from reinforceflow import logger
 
 _OPTIMIZER_MAP = {
@@ -128,25 +133,30 @@ def add_grads_summary(grad_vars):
             tf.summary.histogram(w.name + '/gradients', grad)
 
 
-def add_observation_summary(obs, obs_shape):
+def add_observation_summary(obs, env):
     """Adds observation summary.
     Supports observation tensors with 1, 2 and 3 dimensions only.
     1-D tensors logs as histogram summary.
     2-D and 3-D tensors logs as image summary.
 
     Args:
-        obs: (Tensor) Observation.
-        obs_shape: (nd.array) Observation shape.
+        obs (Tensor): Observation.
+        env (envs.Env): Environment instance.
     """
-    if len(obs_shape) == 1:
-        tf.summary.histogram('observation', obs)
-    elif len(obs_shape) == 2:
-        tf.summary.image('observation', obs)
-    elif len(obs_shape) == 3 and obs_shape[2] in (1, 3, 4):
-        tf.summary.image('observation', obs)
+    if env.obs_stack == 1:
+        if len(env.obs_space.shape) == 1:
+            tf.summary.histogram('observation', obs)
+        elif len(env.obs_space.shape) == 2:
+            tf.summary.image('observation', obs)
+        elif len(env.obs_space.shape) == 3 and env.obs_space.shape[2] in (1, 3):
+            tf.summary.image('observation', obs)
+    elif isinstance(env, GymPixelWrapper):
+        channels = 1 if env.is_grayscale else 3
+        for obs_id in range(env.obs_stack):
+            o = obs[:, :, obs_id*channels:(obs_id+1)*channels]
+            tf.summary.image('observation%d' % obs_id, o)
     else:
-        logger.warn('Cannot create summary for observation with shape %s'
-                    % obs_shape)
+        logger.warn('Cannot create summary for observation with shape', env.obs_space.shape)
 
 
 class SummaryLogger(object):
@@ -154,8 +164,8 @@ class SummaryLogger(object):
         """Agent's performance logger.
 
         Args:
-            step_counter: (int) Initial optimizer update step.
-            obs_counter: (int) Initial observation counter.
+            step_counter (int): Initial optimizer update step.
+            obs_counter (int): Initial observation counter.
         """
         self.last_time = time.time()
         self.last_step = step_counter
@@ -168,7 +178,7 @@ class SummaryLogger(object):
         Args:
             rewards: (utils.IncrementalAverage) On-policy reward incremental average.
                      To disable reward logging, pass None.
-            test_rewards: (utils.IncrementalAverage) Greedy-polcy reward incremental average.
+            test_rewards: (utils.IncrementalAverage) Greedy-policy reward incremental average.
                           To disable test reward logging, pass None.
             ep_counter: (int) Episode counter.
             step_counter: (int) Optimizer update step counter.
