@@ -6,11 +6,7 @@ import time
 import six
 import tensorflow as tf
 from tensorflow.python.framework import ops
-# try:
-#     from tensorflow.python.framework import ops
-# except ImportError:
-#     from tensorflow.python import ops
-from reinforceflow.envs import Env, GymPixelWrapper
+from reinforceflow.envs import GymPixelWrapper
 from reinforceflow import logger
 
 _OPTIMIZER_MAP = {
@@ -153,8 +149,8 @@ def add_observation_summary(obs, env):
     elif isinstance(env, GymPixelWrapper):
         channels = 1 if env.is_grayscale else 3
         for obs_id in range(env.obs_stack):
-            o = obs[:, :, obs_id*channels:(obs_id+1)*channels]
-            tf.summary.image('observation%d' % obs_id, o)
+            o = obs[:, :, :, obs_id*channels:(obs_id+1)*channels]
+            tf.summary.image('observation%d' % obs_id, o, max_outputs=1)
     else:
         logger.warn('Cannot create summary for observation with shape', env.obs_space.shape)
 
