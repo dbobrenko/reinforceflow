@@ -193,9 +193,9 @@ class GymPixelWrapper(GymWrapper):
         Used to get around Atari sprites flickering (see Mnih et al. (2015)).
 
         Args:
-            obs: (nd.array) 2-D or 3-D observation.
+            obs (numpy.ndarray): 2-D or 3-D observation.
         Returns:
-            (nd.array) Preprocessed 3-D observation.
+            (numpy.ndarray) Preprocessed 3-D observation.
         """
         obs = image_preprocess(obs, resize_height=self.height,
                                resize_width=self.width, to_gray=self._to_gray)

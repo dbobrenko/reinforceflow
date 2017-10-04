@@ -7,8 +7,8 @@ class BaseSegmentTree(object):
     """Base Segment Tree.
 
     Args:
-        capacity: (int) Maximum size capacity.
-        default_value: Default priority for initialized values.
+        capacity (int): Maximum size capacity.
+        default_value (float): Default priority for initialized values.
     """
     def __init__(self, capacity, default_value):
         self._size = 0

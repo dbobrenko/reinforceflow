@@ -50,15 +50,15 @@ class A3CAgent(BaseDeepAgent):
             optimizer: An optimizer name string or class.
             learning_rate (float or Tensor): Optimizer's learning rate.
             optimizer_args (dict): Keyword arguments used for optimizer creation.
-            decay (function): Learning rate decay.
-                              Expects tensorflow decay function or function name string.
-                              Available name strings: 'polynomial', 'exponential'.
-                              To disable, pass None.
+            decay (str or function): Learning rate decay.
+                Expects tensorflow decay function or function name string.
+                Available name strings: 'polynomial', 'exponential'.
+                To disable, pass None.
             decay_args (dict): Keyword arguments, passed to the decay function.
             gradient_clip (float): Norm gradient clipping.
-                                   To disable, pass False or None.
+                To disable, pass False or None.
             saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
-                              When exceeds, overwrites the most earliest checkpoints.
+                When exceeds, overwrites the most earliest checkpoints.
         """
         with tf.variable_scope(self._scope + 'optimizer'):
             self.opt, _ = utils_tf.create_optimizer(optimizer, learning_rate,
@@ -97,29 +97,29 @@ class A3CAgent(BaseDeepAgent):
         """Starts training of Asynchronous n-step Q-Learning agent.
 
         Args:
-            num_threads: (int) Amount of asynchronous threads for training.
-            steps: (int) Total amount of steps across all threads.
+            num_threads (int): Amount of asynchronous threads for training.
+            steps (int): Total amount of steps across all threads.
             optimizer: String or tensorflow Optimizer instance.
-            learning_rate: (float) Optimizer learning rate.
-            optimizer_args: (dict) Keyword arguments used for optimizer creation.
-            gradient_clip: (float) Norm gradient clipping. To disable, pass 0 or None.
-            batch_size: (int) Training batch size.
-            policy: (core.BasePolicy) Agent's training policy.
-            log_dir: (str) Directory path, used for summary and checkpoints.
-            decay: (function) Learning rate decay.
-                   Expects tensorflow decay function or function name string.
-                   Available names: 'polynomial', 'exponential'.
-                   To disable, pass None.
-            decay_args: (dict) Keyword arguments used for learning rate decay function creation.
-            gamma: (float) Reward discount factor.
-            log_every_sec: (int) Checkpoint and summary saving frequency (in seconds).
-            render: (bool) Enables game screen rendering.
-            saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
-                        When exceeds, overwrites the most earliest checkpoints.
-            ignore_checkpoint: (bool) If enabled, training will start from scratch,
-                               and overwrite all old checkpoints found at `log_dir` path.
-            test_render: (bool) Enables rendering for test evaluations.
-            test_episodes: (int) Number of test episodes. To disable test evaluation, pass 0.
+            learning_rate (float): Optimizer learning rate.
+            optimizer_args (dict): Keyword arguments used for optimizer creation.
+            gradient_clip (float): Norm gradient clipping. To disable, pass 0 or None.
+            batch_size (int): Training batch size.
+            policy (core.BasePolicy): Agent's training policy.
+            log_dir (str): Directory path, used for summary and checkpoints.
+            decay (function): Learning rate decay.
+                Expects tensorflow decay function or function name string.
+                Available names: 'polynomial', 'exponential'.
+                To disable, pass None.
+            decay_args (dict): Keyword arguments used for learning rate decay function creation.
+            gamma (float): Reward discount factor.
+            log_every_sec (int): Checkpoint and summary saving frequency (in seconds).
+            render (bool): Enables game screen rendering.
+            saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
+                When exceeds, overwrites the most earliest checkpoints.
+            ignore_checkpoint (bool): If enabled, training will start from scratch,
+                and overwrite all old checkpoints found at `log_dir` path.
+            test_render (bool): Enables rendering for test evaluations.
+            test_episodes (int): Number of test episodes. To disable test evaluation, pass 0.
         """
         if num_threads < 1:
             raise ValueError("Number of threads must be >= 1 (Got: %s)." % num_threads)
@@ -196,11 +196,11 @@ class A3CAgent(BaseDeepAgent):
         """Computes action for given observation.
 
         Args:
-            obs: (numpy.ndarray) Observation.
+            obs (numpy.ndarray): Observation.
 
         Returns:
             Greedy-policy action if environment action space is discrete.
-            Raw network output if environment action space is continious.
+            Raw network output if environment action space is continuous.
         """
         action_values = self.predict_on_batch([obs])
         if isinstance(self.env.action_space, Tuple):

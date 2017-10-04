@@ -19,7 +19,7 @@ class DiscreteOneHot(Space, _spaces.Discrete):
     Represents single one-hot encoded discrete value.
 
     Args:
-        n: (int) Space size.
+        n (int): Space size.
     """
     def __init__(self, n):
         n = np.asscalar(np.asarray(n))
@@ -55,8 +55,8 @@ class Continious(Space, _spaces.Box):
 
 
 class Tuple(Space, _spaces.Tuple):
-    """Continious Space.
-    Represents a tensor of continious values.
+    """Continuous Space.
+    Represents a tensor of continuous values.
 
     Args:
         spaces: Variable length argument list of spaces.

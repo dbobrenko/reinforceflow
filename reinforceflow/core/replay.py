@@ -10,6 +10,13 @@ from reinforceflow import logger
 
 
 class ExperienceReplay(object):
+    """Experience replay buffer.
+
+    Args:
+        capacity (int):  Total replay capacity.
+        min_size (int): Minimum replay size (enables is_ready property, when fills).
+        batch_size (int): Size of sampled batch.
+    """
     def __init__(self, capacity, min_size, batch_size):
         if batch_size < 1:
             raise ValueError("Batch size must be higher or equal to 1.")
@@ -22,7 +29,7 @@ class ExperienceReplay(object):
         self._batch_size = batch_size
         self._min_size = max(batch_size, min_size)
         # Python lists offers ~18% faster index access speed at current setup,
-        # at the same time sacrificing ~18% of memory.
+        # at the same time sacrificing ~18% of memory compared to numpy.ndarray.
         self._obs = [0] * (capacity + 1)
         self._actions = [0] * capacity
         self._rewards = [0] * capacity
@@ -68,11 +75,25 @@ class ExperienceReplay(object):
 
 
 class ProportionalReplay(ExperienceReplay):
-    def __init__(self, capacity, min_size, batch_size, alpha=1.0):
+    """Proportional Prioritized Experience replay buffer.
+    Based on paper: https://arxiv.org/pdf/1511.05952.pdf
+    Args:
+        capacity (int):  Total replay capacity.
+        min_size (int): Minimum replay size (enables is_ready property, when fills).
+        batch_size (int): Size of sampled batch.
+        alpha (float): Exponent which determines how much priority is used.
+            (0 - uniform prioritization, 1 - full prioritization).
+        beta (float): Exponent which determines how much importance-sampling correction is used.
+            (0 - no correction, 1 - full correction).
+    """
+    def __init__(self, capacity, min_size, batch_size, alpha=0.7, beta=0.5):
         super(ProportionalReplay, self).__init__(capacity, min_size, batch_size)
+        assert alpha >= 0
+        assert beta >= 0
         self.sumtree = SumTree(capacity)
         self.mintree = MinTree(capacity)
         self._alpha = alpha
+        self._beta = beta
         self._epsilon = 0.00001
         self._max_priority = 0.0
 
@@ -96,7 +117,7 @@ class ProportionalReplay(ExperienceReplay):
             idxs.append(self.sumtree.find_sum_idx(s))
         gather = itemgetter(*idxs)
         next_obs_gather = itemgetter(*[i + 1 for i in idxs])
-        importances = self._compute_importance(idxs)
+        importances = self._compute_importance(idxs, self._beta)
         return (gather(self._obs),
                 gather(self._actions),
                 gather(self._rewards),
@@ -105,14 +126,16 @@ class ProportionalReplay(ExperienceReplay):
                 idxs,
                 importances)
 
-    def _compute_importance(self, indexes):
+    def _compute_importance(self, indexes, beta):
         importances = [0.0] * len(indexes)
         if self.mintree.min() == float('inf'):
             return importances
-        importance_max = (self.mintree.min() / self.sumtree.sum()) * self.sumtree.size
+        prob_min = self.mintree.min() / self.sumtree.sum()
+        weight_max = (prob_min * self.sumtree.size) ** (-beta)
         for i, idx in enumerate(indexes):
             prob = self.sumtree[idx] / self.sumtree.sum()
-            importances[i] = (prob * self.sumtree.size) / importance_max
+            weight = (prob * self.sumtree.size) ** (-beta)
+            importances[i] = weight / weight_max
         return importances
 
     def update(self, indexes, priorities):

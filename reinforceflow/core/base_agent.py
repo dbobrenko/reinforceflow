@@ -34,13 +34,13 @@ class BaseAgent(object):
         """Tests agent's performance with specified policy on a given number of episodes.
 
         Args:
-            episodes: (int) Number of episodes.
-            max_ep_steps: (int) Maximum allowed steps per episode.
-            render: (bool) Enables game screen rendering.
-            copy_env: (bool) Performs tests on the copy of environment instance.
-            max_fps: (int) Maximum allowed fps. To disable fps limitation, pass None.
+            episodes (int): Number of episodes.
+            max_ep_steps (int): Maximum allowed steps per episode.
+            render (bool): Enables game screen rendering.
+            copy_env (bool): Performs tests on the copy of environment instance.
+            max_fps (int): Maximum allowed fps. To disable fps limitation, pass None.
 
-        Returns: (utils.IncrementalAverage) Average reward per episode.
+        Returns (utils.IncrementalAverage): Average reward per episode.
         """
         # In seconds
         delta_frame = 1. / max_fps if max_fps else 0
@@ -95,16 +95,16 @@ class BaseTableAgent(BaseDiscreteAgent):
 class BaseDeepAgent(BaseAgent):
     @abc.abstractmethod
     def __init__(self, env, net_factory, name=''):
-        """Abstract base class for Deep Q-Network agent.
+        """Abstract base class for Deep Network-based agents.
 
         Args:
-            env: Environment wrapper instance.
-            net_factory: Network factory, defined in nets file.
+            env (envs.Env): Environment instance.
+            net_factory (nets.AbstractFactory): Network factory, defined in nets file.
 
         Attributes:
             env: Environment instance.
-            net_factory: (nets.AbstractFactory) Used for building network model.
-            name: (str) Agent's name prefix.
+            net_factory: Used for building network model.
+            name: Agent's name prefix.
         """
         super(BaseDeepAgent, self).__init__(env=env)
         self._net_factory = net_factory

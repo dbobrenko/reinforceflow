@@ -10,8 +10,6 @@ import tensorflow as tf
 
 import reinforceflow.utils
 from reinforceflow.core.base_agent import BaseDQNAgent
-from reinforceflow.core import ExperienceReplay
-from reinforceflow.core import EGreedyPolicy
 from reinforceflow.core import Tuple
 from reinforceflow import utils_tf
 from reinforceflow import logger
@@ -24,9 +22,9 @@ class DQNAgent(BaseDQNAgent):
 
         See `core.base_agent.BaseDQNAgent.__init__`.
         Args:
-            use_double: (bool) Enables Double DQN, described at:
-                        "Dueling Network Architectures for Deep Reinforcement Learning",
-                        Schaul et al., 2016.
+            use_double (bool): Enables Double DQN, described at:
+                "Dueling Network Architectures for Deep Reinforcement Learning",
+                Schaul et al., 2016.
         """
         super(DQNAgent, self).__init__(env=env, net_factory=net_factory, name=name)
         config = tf.ConfigProto(
@@ -54,16 +52,15 @@ class DQNAgent(BaseDQNAgent):
             optimizer: An optimizer name string or class.
             learning_rate (float or Tensor): Optimizer's learning rate.
             optimizer_args (dict): Keyword arguments used for optimizer creation.
-            gamma: (float) Reward discount factor.
-            decay: (function) Learning rate decay.
-                              Expects tensorflow decay function or function name string.
-                              Available name strings: 'polynomial', 'exponential'.
-                              To disable, pass None.
-            decay_args: (dict) Keyword arguments, passed to the decay function.
-            gradient_clip: (float) Norm gradient clipping.
-                                   To disable, pass False or None.
-            saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
-                              When exceeds, overwrites the most earliest checkpoints.
+            gamma (float): Reward discount factor.
+            decay (function): Learning rate decay.
+                Expects tensorflow decay function or function name string.
+                Valid: 'polynomial', 'exponential'. To disable, pass None.
+            decay_args (dict): Keyword arguments, passed to the decay function.
+            gradient_clip (float): Norm gradient clipping. To disable, pass 0 or None.
+                To disable, pass False or None.
+            saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
+                When exceeds, overwrites the most earliest checkpoints.
         """
         if self._train_op is not None:
             logger.warn("The training graph has already been built. Skipping.")
@@ -103,7 +100,7 @@ class DQNAgent(BaseDQNAgent):
             grads = tf.gradients(loss, self._weights)
             if gradient_clip:
                 grads, _ = tf.clip_by_global_norm(grads, gradient_clip)
-            grads_vars = list(zip(grads, self._weights))
+            grads_vars = tuple(zip(grads, self._weights))
             self._train_op = opt.apply_gradients(grads_vars,
                                                  global_step=self.global_step)
         save_vars = set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
@@ -223,31 +220,31 @@ class DQNAgent(BaseDQNAgent):
         """Starts training process.
 
         Args:
-            max_steps: (int) Number of training steps (optimizer steps).
+            max_steps (int): Number of training steps (optimizer steps).
             optimizer: An optimizer string name or class.
-            learning_rate: (float or Tensor) Optimizer learning rate.
-            log_dir: (str) Directory used for summary and checkpoints.
-                     Continues training, if checkpoint already exists.
+            learning_rate (float or Tensor): Optimizer learning rate.
+            log_dir (str): Directory used for summary and checkpoints.
+                Continues training, if checkpoint already exists.
             replay: (core.ExperienceReplay) Experience buffer.
-            policy: (core.BasePolicy) Agent's training policy.
-            target_freq: (int) Target network update frequency (in update steps).
-            update_freq: (int) Optimizer update frequency.
-            optimizer_args: (dict) Keyword arguments used for optimizer creation.
-            decay: (function) Learning rate decay.
-                   Expects tensorflow decay function or function name string.
-                   Available names: 'polynomial', 'exponential'.
-                   To disable, pass None.
-            decay_args: (dict) Keyword arguments used for learning rate decay function creation.
-            gradient_clip: (float) Norm gradient clipping. To disable, pass 0 or None.
-            render: (bool) Enables game screen rendering.
-            gamma: (float) Reward discount factor.
-            log_every_sec: (int) Checkpoint and summary saving frequency (in seconds).
-            saver_keep: (int) Maximum number of checkpoints can be stored in `log_dir`.
-                        When exceeds, overwrites the most earliest checkpoints.
-            ignore_checkpoint: (bool) If enabled, training will start from scratch,
-                               and overwrite all old checkpoints found at `log_dir` path.
-            test_render: (bool) Enables rendering for test evaluations.
-            test_episodes: (int) Number of test episodes. To disable test evaluation, pass 0.
+            policy (core.BasePolicy): Agent's training policy.
+            target_freq (int): Target network update frequency (in update steps).
+            update_freq (int): Optimizer update frequency.
+            optimizer_args (dict): Keyword arguments used for optimizer creation.
+            decay (function): Learning rate decay.
+                Expects tensorflow decay function or function name string.
+                Available names: 'polynomial', 'exponential'.
+                To disable, pass None.
+            decay_args (dict): Keyword arguments used for learning rate decay function creation.
+            gradient_clip (float): Norm gradient clipping. To disable, pass 0 or None.
+            render (bool): Enables game screen rendering.
+            gamma (float): Reward discount factor.
+            log_every_sec (int): Checkpoint and summary saving frequency (in seconds).
+            saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
+                When exceeds, overwrites the most earliest checkpoints.
+            ignore_checkpoint (bool): If enabled, training will start from scratch,
+                and overwrite all old checkpoints found at `log_dir` path.
+            test_render (bool): Enables rendering for test evaluations.
+            test_episodes (int): Number of test episodes. To disable test evaluation, pass 0.
         """
         self.build_train_graph(optimizer, learning_rate, optimizer_args, gamma,
                                decay, decay_args, gradient_clip, saver_keep)

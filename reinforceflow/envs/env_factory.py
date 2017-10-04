@@ -27,15 +27,15 @@ class EnvFactory(object):
 
         Args:
             env: Environment instance.
-            obs_stack: (int) Number of previous frames to stack to the current.
+            obs_stack (int): Number of previous frames to stack to the current.
                              Used for the agents without short-term memory.
             action_repeat (int): Number of frames to skip with last action repeated.
-            pixel_obs: (bool) Whether environment has pixel screen observations.
-            resize_width: (int) Resize width. Applies only for pixel screen environments.
-            resize_height: (int) Resize height. Applies only for pixel screen environments.
-            random_start: (int) (TODO) Determines the max number of randomly skipped frames,
+            pixel_obs (bool): Whether environment has pixel screen observations.
+            resize_width (int): Resize width. Applies only for pixel screen environments.
+            resize_height (int): Resize height. Applies only for pixel screen environments.
+            random_start (int): (TODO) Determines the max number of randomly skipped frames,
                                 see Mnih et al., 2015.
-            use_atari_dqn_wrap: (bool) Enables Atari environments wrapping
+            use_atari_dqn_wrap (bool): Enables Atari environments wrapping
                                 as stated in Mnih et al., 2015.
 
         Returns (gym.Wrapper): Environment instance.

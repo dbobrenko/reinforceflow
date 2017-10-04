@@ -28,11 +28,11 @@ class Env(object):
 
         Args:
             env: Raw environment instance.
-            action_repeat: (int) The number of steps on which the action will be repeated.
+            action_repeat (int): The number of steps on which the action will be repeated.
                            To disable, pass 1, 0 or None.
             obs_space: (core.spaces.Space) Observation space specification.
             action_space: (core.spaces.Space) Action space specification.
-            obs_stack: (int) The length of stacked observations.
+            obs_stack (int): The length of stacked observations.
                        Provided obs_space shape will be automatically modified.
                        Doesn't works for Tuple spaces. To disable, pass 1, 0 or None.
         """
@@ -68,7 +68,7 @@ class Env(object):
     def reset(self):
         """Resets current episode.
 
-        Returns: (nd.array)
+        Returns (numpy.ndarray):
             First observation from the new episode.
         """
         # Reset observations stack
@@ -82,7 +82,7 @@ class Env(object):
         """Executes step with given action.
 
         Args:
-            action: (nd.array) Action for current step.
+            action (numpy.ndarray): Action for current step.
         Returns:
             Transition tuple of (next_observation, reward, is_terminal, info).
         """

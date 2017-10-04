@@ -11,13 +11,13 @@ def stack_observations(obs, stack_len, obs_stack=None):
     """Stacks observations along last axis.
 
     Args:
-        obs: (nd.array) Observation.
-        stack_len: (int) Stack's total length.
-        obs_stack: (nd.array) Current stack of observations.
-                   If None, passed `obs` will be repeated for `stack_len` times.
+        obs (numpy.ndarray): Observation.
+        stack_len (int): Stack's total length.
+        obs_stack (numpy.ndarray): Current stack of observations.
+            If None, passed `obs` will be repeated for `stack_len` times.
 
-    Returns:
-        (nd.array) Stack of observations.
+    Returns (numpy.ndarray):
+        Stack of observations.
     """
     stack_axis = len(np.shape(obs)) - 1
     obs_axis_len = np.shape(obs)[stack_axis]
@@ -39,13 +39,13 @@ def image_preprocess(obs, resize_width, resize_height, to_gray):
     """Applies basic preprocessing for image observations.
 
     Args:
-        obs: (nd.array) 2-D or 3-D observation.
-        resize_width: (int) Resize width. To disable resize, pass None.
-        resize_height: (int) Resize height. To disable resize, pass None.
-        to_gray: (bool) Converts image to grayscale.
+        obs (numpy.ndarray): 2-D or 3-D observation.
+        resize_width (int): Resize width. To disable resize, pass None.
+        resize_height (int): Resize height. To disable resize, pass None.
+        to_gray (bool): Converts image to grayscale.
 
-    Returns:
-        (nd.array) Processed 3-D observation.
+    Returns (numpy.ndarray):
+        Processed 3-D observation.
     """
     processed_obs = np.squeeze(obs)
     if to_gray:
@@ -61,12 +61,12 @@ def discount_rewards(rewards, gamma, expected_reward=0.0):
     """Applies reward discounting.
 
     Args:
-        rewards: (list) Rewards.
-        gamma: (float) Discount factor.
-        expected_reward: (float) Expected future reward.
+        rewards (list): Rewards.
+        gamma (float): Discount factor.
+        expected_reward (float): Expected future reward.
 
-    Returns:
-        (list) Discounted rewards
+    Returns (list):
+        Discounted rewards
     """
     discount_sum = expected_reward
     result = [0] * len(rewards)
@@ -80,11 +80,11 @@ def one_hot(shape, idx):
     """Applies one-hot encoding.
 
     Args:
-        shape: (int) Shape of the output vector.
-        idx: (int) One-hot index.
+        shape (int): Shape of the output vector.
+        idx (int): One-hot index.
 
-    Returns:
-        (nd.array) One-hot encoded vector.
+    Returns (numpy.ndarray):
+        One-hot encoded vector.
     """
     vec = np.zeros(shape, dtype=np.uint8)
     vec[idx] = 1
@@ -100,23 +100,23 @@ class IncrementalAverage(object):
         self._max = float('-inf')
 
     def add(self, value):
-        """Adds value to the counter."""
+        """Adds value."""
         self._total += value
         if value < self._min:
             self._min = value
-        if value < self._max:
+        if value > self._max:
             self._max = value
         self._counter += 1
 
     def add_batch(self, batch):
-        """Adds batch of values to the counter."""
+        """Adds batch of values."""
         self._total += np.sum(batch)
         self._counter += len(batch)
         value_min = np.min(batch)
         if value_min < self._min:
             self._min = value_min
         value_max = np.max(batch)
-        if value_max < self._max:
+        if value_max > self._max:
             self._max = value_max
 
     @property
@@ -136,9 +136,11 @@ class IncrementalAverage(object):
         return self._counter
 
     def compute_average(self):
+        """Computes incremental average."""
         return self._total / (self._counter or 1)
 
     def reset(self):
+        """Computes and resets incremental average."""
         average = self.compute_average()
         self._total = 0.0
         self._counter = 0

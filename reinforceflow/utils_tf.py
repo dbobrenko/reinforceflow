@@ -37,14 +37,14 @@ def create_optimizer(opt, learning_rate, optimizer_args=None, decay=None,
 
     Args:
         opt: TensorFlow optimizer, expects string or callable object.
-        learning_rate: Optimizer learning rate, expects float or Tensor.
-        optimizer_args: (dict) TensorFlow optimizer kwargs.
-        decay: (str) Learning rate decay. Available: poly, exp.
-        decay_args: (dict) Learning rate decay kwargs.
-        global_step: (Tensor) Optimizer global step.
+        learning_rate (float or Tensor): Optimizer learning rate.
+        optimizer_args (dict): TensorFlow optimizer kwargs.
+        decay (str or function): Learning rate decay. Available: poly, exp.
+        decay_args (dict): Learning rate decay kwargs.
+        global_step (Tensor): Optimizer global step.
 
-    Returns:
-        (tuple) Optimizer instance, learning rate tensor.
+    Returns (tuple):
+        Optimizer instance, learning rate tensor.
     """
     if optimizer_args is None:
         optimizer_args = {}
@@ -89,13 +89,13 @@ def create_decay(decay, learning_rate, global_step, **kwargs):
     """Creates learning rate decay with given args.
 
     Args:
-        decay: (str) Learning rate decay. Available: poly, exp.
-        learning_rate: Optimizer learning rate, expects float or Tensor.
-        global_step: (Tensor) Optimizer global step.
+        decay (str): Learning rate decay. Available: poly, exp.
+        learning_rate (float or Tensor): Optimizer learning rate.
+        global_step (Tensor): Optimizer global step.
         **kwargs: Learning rate decay function kwargs.
 
-    Returns:
-        (Tensor) Learning rate with applied decay.
+    Returns (Tensor):
+        Learning rate with applied decay.
     """
     if callable(decay) and hasattr(decay, __name__):
         decay = decay.__name__
@@ -121,7 +121,7 @@ def add_grads_summary(grad_vars):
     """Adds summary for weights and gradients.
 
     Args:
-        grad_vars: Tuple of gradients and weights tensors.
+        grad_vars (tuple): Gradients and weights tensors.
     """
     for grad, w in grad_vars:
         tf.summary.histogram(w.name, w)
@@ -172,18 +172,18 @@ class SummaryLogger(object):
         """
 
         Args:
-            rewards: (utils.IncrementalAverage) On-policy reward incremental average.
-                     To disable reward logging, pass None.
-            test_rewards: (utils.IncrementalAverage) Greedy-policy reward incremental average.
-                          To disable test reward logging, pass None.
-            ep_counter: (int) Episode counter.
-            step_counter: (int) Optimizer update step counter.
-            obs_counter: (int) Observation counter. To disable performance logging, pass None.
-            q_values: (utils.IncrementalAverage) On-policy max Q-values incremental average.
-                      Used in DQN-like agents. To disable Q-values logging, pass None.
-            log_performance: (bool) Enables performance logging.
-            reset_rewards: (bool) If enabled, resets `rewards` and `test_rewards` counters.
-            scope: (str) Agent's name scope.
+            rewards (utils.IncrementalAverage): On-policy reward incremental average.
+                To disable reward logging, pass None.
+            test_rewards (utils.IncrementalAverage): Greedy-policy reward incremental average.
+                To disable test reward logging, pass None.
+            ep_counter (int): Episode counter.
+            step_counter (int): Optimizer update step counter.
+            obs_counter (int): Observation counter. To disable performance logging, pass None.
+            q_values (utils.IncrementalAverage): On-policy max Q-values incremental average.
+                Used in DQN-like agents. To disable Q-values logging, pass None.
+            log_performance (bool): Enables performance logging.
+            reset_rewards (bool): If enabled, resets `rewards` and `test_rewards` counters.
+            scope (str): Agent's name scope.
 
         Returns:
             TensorFlow summary logs.
