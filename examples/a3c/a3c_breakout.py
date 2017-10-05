@@ -16,26 +16,28 @@ from reinforceflow.nets import A3CConvFactory
 reinforceflow.set_random_seed(555)
 
 
-env_name = 'PongNoFrameskip-v4'
+env_name = 'BreakoutNoFrameskip-v4'
 env = GymPixelWrapper(env_name,
                       action_repeat=4,
                       obs_stack=4,
                       resize_width=84,
                       resize_height=84,
                       to_gray=True)
+optimizer_args = {'decay': 0.99}
 steps = 80000000
 agent = A3CAgent(env, net_factory=A3CConvFactory(), use_gpu=True)
 policies = [EGreedyPolicy(eps_start=1.0, eps_final=final, anneal_steps=4000000)
-            for final in [0.01, 0.01, 0.01, 0.1, 0.1, 0.1, 0.5, 0.5] * 2]
+            for final in [0.01, 0.01, 0.01, 0.1, 0.1, 0.1, 0.5, 0.5]*2]
 agent.train(num_threads=16,
             render=False,
             steps=steps,
-            optimizer='adam',
-            learning_rate=0.00005,
+            optimizer='rms',
+            optimizer_args=optimizer_args,
+            learning_rate=0.001,
             policy=policies,
             target_freq=40000,
             gamma=0.99,
             batch_size=5,
             log_every_sec=3600,
             test_render=True,
-            log_dir='/tmp/reinforceflow/%s/a3c/adam_5e5/' % env_name)
+            log_dir='/tmp/reinforceflow/%s/a3c/rms_1e3/' % env_name)
