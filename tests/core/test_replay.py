@@ -52,7 +52,7 @@ def test_replay_sample_term():
 
 def test_proportional_add():
     cap = 10000
-    replay = ProportionalReplay(capacity=cap, min_size=500, batch_size=32, alpha=1.0)
+    replay = ProportionalReplay(capacity=cap, min_size=500, batch_size=32, alpha=1, beta=1)
     for i in range(3*cap):
         replay.add(0, 0, 0, 0, False)
     assert replay.size == cap
@@ -61,7 +61,7 @@ def test_proportional_add():
 def test_prop_replay_sample():
     cap = 512
     batch_size = 256
-    replay = ProportionalReplay(capacity=cap, min_size=cap, batch_size=batch_size, alpha=1.0)
+    replay = ProportionalReplay(capacity=cap, min_size=cap, batch_size=batch_size, alpha=1, beta=1)
     for i in range(2*cap):
         replay.add(obs=i, action=0, reward=0, obs_next=i+1, term=False, priority=i)
     obs, a, r, obs_next, terms, idxs, importance = replay.sample()
@@ -79,7 +79,7 @@ def test_prop_replay_distribution():
     cap = 256
     batch_size = 32
     sample_amount = 2000
-    replay = ProportionalReplay(capacity=cap, min_size=cap, batch_size=batch_size, alpha=1.0)
+    replay = ProportionalReplay(capacity=cap, min_size=cap, batch_size=batch_size, alpha=1, beta=1)
     s = int(np.sum(priors))
     expected_priors = np.asarray(priors) / s
     received_priors = [0] * len(priors)
@@ -98,7 +98,7 @@ def test_prop_replay_update():
     cap = 2048
     batch_size = 32
     sample_amount = 2000
-    replay = ProportionalReplay(capacity=cap, min_size=cap, batch_size=batch_size, alpha=1.0)
+    replay = ProportionalReplay(capacity=cap, min_size=cap, batch_size=batch_size, alpha=1, beta=1)
     s = int(np.sum(priors))
     expected_priors = priors / s
     received_priors = [0] * len(priors)

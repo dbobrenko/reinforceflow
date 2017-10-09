@@ -17,7 +17,7 @@ from reinforceflow import utils_tf
 from reinforceflow import logger
 from reinforceflow.utils import discount_rewards
 from reinforceflow.utils_tf import add_grads_summary, add_observation_summary
-from reinforceflow.core import Tuple
+from reinforceflow.core import Continious
 
 
 class A3CAgent(BaseDeepAgent):
@@ -108,8 +108,7 @@ class A3CAgent(BaseDeepAgent):
             log_dir (str): Directory path, used for summary and checkpoints.
             decay (function): Learning rate decay.
                 Expects tensorflow decay function or function name string.
-                Available names: 'polynomial', 'exponential'.
-                To disable, pass None.
+                Available names: 'polynomial', 'exponential'. To disable, pass None.
             decay_args (dict): Keyword arguments used for learning rate decay function creation.
             gamma (float): Reward discount factor.
             log_every_sec (int): Checkpoint and summary saving frequency (in seconds).
@@ -202,8 +201,8 @@ class A3CAgent(BaseDeepAgent):
             Greedy-policy action if environment action space is discrete.
             Raw network output if environment action space is continuous.
         """
-        action_values = self.predict_on_batch([obs])
-        if isinstance(self.env.action_space, Tuple):
+        action_values = self.predict_on_batch([obs])[0]
+        if isinstance(self.env.action_space, Continious):
             return action_values
         return self._greedy_policy.select_action(self.env, action_values)
 
@@ -247,7 +246,7 @@ class _ThreadA3CAgent(BaseDeepAgent, Thread):
             grads = tf.gradients(loss, self._weights)
             if gradient_clip:
                 grads, _ = tf.clip_by_global_norm(grads, gradient_clip)
-            grads_vars = list(zip(grads, self.global_agent.weights))
+            grads_vars = tuple(zip(grads, self.global_agent.weights))
             self._train_op = self.global_agent.opt.apply_gradients(grads_vars,
                                                                    self.global_agent.global_step)
             self._sync_op = [self._weights[i].assign(self.global_agent.weights[i])
@@ -286,6 +285,13 @@ class _ThreadA3CAgent(BaseDeepAgent, Thread):
                                    })
         return summary
 
+    def predict_action(self, obs):
+        obs_counter = self.global_agent.increment_obs_counter()
+        reward_per_action = self.predict_on_batch([obs])[0]
+        if isinstance(self.env.action_space, Continious):
+            return reward_per_action
+        return self.policy.select_action(self.env, reward_per_action, obs_counter)
+
     def run(self):
         reward_logger = utils_tf.SummaryLogger(self.global_agent.step_counter,
                                                self.global_agent.obs_counter)
@@ -303,10 +309,8 @@ class _ThreadA3CAgent(BaseDeepAgent, Thread):
                 obs = self.env.reset()
                 self.global_agent.increment_ep_counter()
             while not term and len(batch_obs) < self.batch_size:
-                current_step = self.global_agent.increment_obs_counter()
                 batch_obs.append(obs)
-                reward_per_action = self.predict_on_batch([obs])
-                action = self.policy.select_action(self.env, reward_per_action, current_step)
+                action = self.predict_action(obs)
                 obs, reward, term, info = self.env.step(action)
                 self._reward_accum += reward
                 reward = np.clip(reward, -1, 1)
@@ -342,7 +346,4 @@ class _ThreadA3CAgent(BaseDeepAgent, Thread):
         raise NotImplementedError('Use `A3CAgent.train`.')
 
     def build_train_graph(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def predict_action(self, *args, **kwargs):
         raise NotImplementedError
