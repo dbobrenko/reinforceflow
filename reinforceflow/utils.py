@@ -2,9 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import cv2
 import numpy as np
-from skimage.color import rgb2gray
-from skimage.transform import resize
 
 
 def stack_observations(obs, stack_len, obs_stack=None):
@@ -19,7 +18,7 @@ def stack_observations(obs, stack_len, obs_stack=None):
     Returns (numpy.ndarray):
         Stack of observations.
     """
-    stack_axis = len(np.shape(obs)) - 1
+    stack_axis = np.ndim(obs) - 1
     obs_axis_len = np.shape(obs)[stack_axis]
     if obs_stack is None:
         obs_stack = obs
@@ -39,20 +38,20 @@ def image_preprocess(obs, resize_width, resize_height, to_gray):
     """Applies basic preprocessing for image observations.
 
     Args:
-        obs (numpy.ndarray): 2-D or 3-D observation.
+        obs (numpy.ndarray): 2-D or 3-D uint8 type image.
         resize_width (int): Resize width. To disable resize, pass None.
         resize_height (int): Resize height. To disable resize, pass None.
         to_gray (bool): Converts image to grayscale.
 
     Returns (numpy.ndarray):
-        Processed 3-D observation.
+        Processed 3-D float type image.
     """
     processed_obs = np.squeeze(obs)
     if to_gray:
-        processed_obs = rgb2gray(processed_obs)
+        processed_obs = cv2.cvtColor(processed_obs, cv2.COLOR_RGB2GRAY)
     if resize_height and resize_width:
-        processed_obs = resize(processed_obs, (resize_height, resize_width))
-    if len(processed_obs.shape) <= 2:
+        processed_obs = cv2.resize(processed_obs, (resize_height, resize_width))
+    if np.ndim(processed_obs) == 2:
         processed_obs = np.expand_dims(processed_obs, 2)
     return processed_obs
 

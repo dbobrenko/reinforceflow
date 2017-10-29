@@ -12,7 +12,7 @@ install_requires = [
     'scikit-image',
     'six',
     'matplotlib',
-    'seaborn'
+    'opencv-python'
 ]
 
 extras_require = {

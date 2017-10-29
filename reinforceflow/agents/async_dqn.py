@@ -11,14 +11,14 @@ import numpy as np
 import tensorflow as tf
 
 import reinforceflow.utils
-from reinforceflow.core.base_agent import BaseDQNAgent
+from reinforceflow.core.base_agent import BaseDQNAgent, BaseDiscreteAgent
 from reinforceflow import utils_tf
 from reinforceflow import logger
 from reinforceflow.utils import discount_rewards
 from reinforceflow.utils_tf import add_grads_summary, add_observation_summary
 
 
-class AsyncDQNAgent(BaseDQNAgent):
+class AsyncDQNAgent(BaseDQNAgent, BaseDiscreteAgent):
     """Constructs Asynchronous N-step Q-Learning agent, based on paper:
     "Asynchronous Methods for Deep Reinforcement Learning", Mnih et al., 2016.
     (https://arxiv.org/abs/1602.01783v2)
@@ -38,6 +38,8 @@ class AsyncDQNAgent(BaseDQNAgent):
         self._reward_logger = None
         self.writer = None
         self.opt = None
+        self._target_net = None
+        self._saver = None
 
     def build_train_graph(self, optimizer, learning_rate, optimizer_args=None,
                           decay=None, decay_args=None, gradient_clip=40.0, saver_keep=10):
@@ -148,9 +150,9 @@ class AsyncDQNAgent(BaseDQNAgent):
                                     net_factory=self._net_factory,
                                     global_agent=self,
                                     policy=policy[t],
-                                    log_every_sec=log_every_sec,
                                     gradient_clip=gradient_clip,
                                     gamma=gamma,
+                                    log_every_sec=log_every_sec,
                                     batch_size=batch_size,
                                     name='ThreadAgent%d' % t)
             thread_agents.append(agent)
@@ -167,41 +169,35 @@ class AsyncDQNAgent(BaseDQNAgent):
             t.start()
         self.request_stop = False
 
-        def has_live_threads():
-            return True in [th.isAlive() for th in thread_agents]
-
         def save_and_log():
+            obs_counter = self.obs_counter
             test_rewards = self.test(episodes=test_episodes, render=test_render)
             reward_summary = reward_logger.summarize(None, test_rewards,
                                                      self.ep_counter,
                                                      self.step_counter,
-                                                     self.obs_counter,
+                                                     obs_counter,
                                                      scope=self._scope)
-            self.writer.add_summary(reward_summary, global_step=self.obs_counter)
+            self.writer.add_summary(reward_summary, global_step=obs_counter)
             self.save_weights(log_dir)
-
-        while has_live_threads() and self.obs_counter < steps:
-            try:
-                if render:
-                    for env in envs:
-                        env.render()
-                    time.sleep(0.01)
+        try:
+            while self.obs_counter < steps:
                 if time.time() - last_log_time >= log_every_sec:
                     last_log_time = time.time()
                     save_and_log()
                 if self.obs_counter - last_target_update >= target_freq:
                     last_target_update = self.obs_counter
                     self.target_update()
-            except KeyboardInterrupt:
-                logger.info('Caught Ctrl+C! Stopping training process.')
+                if render:
+                    [env.render() for env in envs]
+                time.sleep(0.01)
+        except KeyboardInterrupt:
+            logger.info('Caught Ctrl+C! Stopping training process.')
         self.request_stop = True
-        logger.info('\nFinal evaluation:')
+        logger.info('Saving progress & performing evaluation:')
         save_and_log()
-        self.save_weights(log_dir)
+        [t.join() for t in thread_agents]
         logger.info('Training finished!')
         self.writer.close()
-        for agent in thread_agents:
-            agent.close()
 
     def train_on_batch(self, obs, actions, rewards, obs_next, term, summarize=False):
         raise NotImplementedError('Training on batch is not supported. Use `train` method instead.')
@@ -214,18 +210,21 @@ class _ThreadDQNAgent(BaseDQNAgent, Thread):
                  global_agent,
                  policy,
                  batch_size,
-                 gradient_clip,
                  gamma,
+                 gradient_clip,
                  log_every_sec,
                  name=''):
         super(_ThreadDQNAgent, self).__init__(env=env, net_factory=net_factory, name=name)
-        self.global_agent = global_agent
         self.sess = global_agent.sess
-        self.policy = policy
-        self.batch_size = batch_size
+        self.global_agent = global_agent
         self.gamma = gamma
+        self.batch_size = batch_size
+        self.policy = policy
         self.log_every_sec = log_every_sec
-        # Build train graph
+        self._ep_reward = reinforceflow.utils.IncrementalAverage()
+        self._ep_q = reinforceflow.utils.IncrementalAverage()
+        self._reward_accum = 0
+        # Build Train Graph
         with tf.variable_scope(self._scope + 'optimizer'):
             action_argmax = tf.arg_max(self._action_ph, 1, name='action_argmax')
             action_onehot = tf.one_hot(action_argmax, self.env.action_space.shape[0],
@@ -236,7 +235,7 @@ class _ThreadDQNAgent(BaseDQNAgent, Thread):
             grads = tf.gradients(loss, self._weights)
             if gradient_clip:
                 grads, _ = tf.clip_by_global_norm(grads, gradient_clip)
-            grads_vars = list(zip(grads, self.global_agent.weights))
+            grads_vars = tuple(zip(grads, self.global_agent.weights))
             self._train_op = self.global_agent.opt.apply_gradients(grads_vars,
                                                                    self.global_agent.global_step)
             self._sync_op = [self._weights[i].assign(self.global_agent.weights[i])
@@ -249,14 +248,11 @@ class _ThreadDQNAgent(BaseDQNAgent, Thread):
             tf.summary.scalar('loss', loss)
             self._summary_op = tf.summary.merge(tf.get_collection(tf.GraphKeys.SUMMARIES,
                                                                   self._scope))
-        self._ep_reward = reinforceflow.utils.IncrementalAverage()
-        self._ep_q = reinforceflow.utils.IncrementalAverage()
-        self._reward_accum = 0
 
     def _sync_global(self):
         self.sess.run(self._sync_op)
 
-    def _train_on_batch(self, obs, actions, rewards, obs_next, term, summarize=False):
+    def train_on_batch(self, obs, actions, rewards, obs_next, term, summarize=False):
         expected_reward = 0
         if not term:
             expected_reward = np.max(self.global_agent.target_predict(obs_next))
@@ -279,7 +275,7 @@ class _ThreadDQNAgent(BaseDQNAgent, Thread):
         self._ep_reward.reset()
         self._ep_q.reset()
         self._reward_accum = 0
-        last_log_time = self.global_agent.obs_counter
+        last_log_time = time.time()
         obs = self.env.reset()
         term = True
         while not self.global_agent.request_stop:
@@ -301,15 +297,15 @@ class _ThreadDQNAgent(BaseDQNAgent, Thread):
                 batch_actions.append(action)
             write_summary = (term and self.log_every_sec
                              and time.time() - last_log_time > self.log_every_sec)
-            summary_str = self._train_on_batch(batch_obs, batch_actions,
-                                               batch_rewards, [obs], term, write_summary)
+            summary_str = self.train_on_batch(batch_obs, batch_actions, batch_rewards, [obs],
+                                              term, write_summary)
             if write_summary:
                 last_log_time = time.time()
                 obs_step = self.global_agent.obs_counter
                 reward_summary = reward_logger.summarize(self._ep_reward, None,
                                                          self.global_agent.ep_counter,
                                                          self.global_agent.step_counter,
-                                                         self.global_agent.obs_counter,
+                                                         obs_step,
                                                          log_performance=False,
                                                          scope=self._scope)
                 self.global_agent.writer.add_summary(reward_summary, global_step=obs_step)
@@ -323,9 +319,6 @@ class _ThreadDQNAgent(BaseDQNAgent, Thread):
 
     def close(self):
         pass
-
-    def train_on_batch(self, *args, **kwargs):
-        raise NotImplementedError('Use `AsyncDQNAgent.train`.')
 
     def train(self, *args, **kwargs):
         raise NotImplementedError('Use `AsyncDQNAgent.train`.')

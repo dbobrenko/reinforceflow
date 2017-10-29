@@ -11,7 +11,7 @@ import numpy as np
 import tensorflow as tf
 
 import reinforceflow.utils
-from reinforceflow.core.base_agent import BaseDeepAgent
+from reinforceflow.core.base_agent import BaseAgent
 from reinforceflow.core import GreedyPolicy
 from reinforceflow import utils_tf
 from reinforceflow import logger
@@ -20,7 +20,7 @@ from reinforceflow.utils_tf import add_grads_summary, add_observation_summary
 from reinforceflow.core import Continious
 
 
-class A3CAgent(BaseDeepAgent):
+class A3CAgent(BaseAgent):
     """Constructs Asynchronous Advantage Actor-Critic agent, based on paper:
     "Asynchronous Methods for Deep Reinforcement Learning", Mnih et al., 2016.
     (https://arxiv.org/abs/1602.01783v2)
@@ -108,7 +108,7 @@ class A3CAgent(BaseDeepAgent):
             log_dir (str): Directory path, used for summary and checkpoints.
             decay (function): Learning rate decay.
                 Expects tensorflow decay function or function name string.
-                Available names: 'polynomial', 'exponential'. To disable, pass None.
+                Valid: 'polynomial', 'exponential'. To disable, pass None.
             decay_args (dict): Keyword arguments used for learning rate decay function creation.
             gamma (float): Reward discount factor.
             log_every_sec (int): Checkpoint and summary saving frequency (in seconds).
@@ -141,10 +141,10 @@ class A3CAgent(BaseDeepAgent):
                                     net_factory=self._net_factory,
                                     global_agent=self,
                                     policy=policy[t],
-                                    batch_size=batch_size,
-                                    gamma=gamma,
                                     gradient_clip=gradient_clip,
+                                    gamma=gamma,
                                     log_every_sec=log_every_sec,
+                                    batch_size=batch_size,
                                     name='ThreadAgent%d' % t)
             thread_agents.append(agent)
         self.writer = tf.summary.FileWriter(log_dir, self.sess.graph)
@@ -159,37 +159,32 @@ class A3CAgent(BaseDeepAgent):
             t.start()
         self.request_stop = False
 
-        def has_live_threads():
-            return True in [th.isAlive() for th in thread_agents]
-
         def save_and_log():
+            obs_counter = self.obs_counter
             test_rewards = self.test(episodes=test_episodes, render=test_render)
             reward_summary = reward_logger.summarize(None, test_rewards,
                                                      self.ep_counter,
                                                      self.step_counter,
-                                                     self.obs_counter,
+                                                     obs_counter,
                                                      scope=self._scope)
-            self.writer.add_summary(reward_summary, global_step=self.obs_counter)
+            self.writer.add_summary(reward_summary, global_step=obs_counter)
             self.save_weights(log_dir)
-
-        while has_live_threads() and self.obs_counter < steps:
-            try:
-                if render:
-                    for env in envs:
-                        env.render()
-                    time.sleep(0.01)
+        try:
+            while self.obs_counter < steps:
                 if time.time() - last_log_time >= log_every_sec:
                     last_log_time = time.time()
                     save_and_log()
-            except KeyboardInterrupt:
-                logger.info('Caught Ctrl+C! Stopping training process.')
+                if render:
+                    [env.render() for env in envs]
+                time.sleep(0.01)
+        except KeyboardInterrupt:
+            logger.info('Caught Ctrl+C! Stopping training process.')
         self.request_stop = True
-        logger.info('\nFinal evaluation:')
+        logger.info('Saving progress & performing evaluation:')
         save_and_log()
+        [t.join() for t in thread_agents]
         logger.info('Training finished!')
         self.writer.close()
-        for agent in thread_agents:
-            agent.close()
 
     def predict_action(self, obs):
         """Computes action for given observation.
@@ -210,7 +205,7 @@ class A3CAgent(BaseDeepAgent):
         raise NotImplementedError('Training on batch is not supported. Use `train` method instead.')
 
 
-class _ThreadA3CAgent(BaseDeepAgent, Thread):
+class _ThreadA3CAgent(BaseAgent, Thread):
     def __init__(self,
                  env,
                  net_factory,
@@ -326,7 +321,7 @@ class _ThreadA3CAgent(BaseDeepAgent, Thread):
                 reward_summary = reward_logger.summarize(self._ep_reward, None,
                                                          self.global_agent.ep_counter,
                                                          self.global_agent.step_counter,
-                                                         self.global_agent.obs_counter,
+                                                         obs_step,
                                                          q_values=self._ep_q,
                                                          log_performance=False,
                                                          scope=self._scope)
