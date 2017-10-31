@@ -75,8 +75,8 @@ class Env(object):
         self._obs_stack = None
         obs = self._reset()
         if self._obs_stack_len > 1:
-            obs = stack_observations(obs, self._obs_stack_len, self._obs_stack)
-        return obs
+            self._obs_stack = stack_observations(obs, self._obs_stack_len, self._obs_stack)
+        return self._obs_stack
 
     def step(self, action):
         """Executes step with given action.
@@ -96,8 +96,8 @@ class Env(object):
                 break
         # Observation stacking
         if self._obs_stack_len and self._obs_stack_len > 1:
-            obs = stack_observations(obs, self._obs_stack_len, self._obs_stack)
-        return obs, reward_total, done, info
+            self._obs_stack = stack_observations(obs, self._obs_stack_len, self._obs_stack)
+        return self._obs_stack, reward_total, done, info
 
     def copy(self):
         return copy.deepcopy(self)

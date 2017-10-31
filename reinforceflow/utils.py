@@ -8,6 +8,8 @@ import numpy as np
 
 def stack_observations(obs, stack_len, obs_stack=None):
     """Stacks observations along last axis.
+       New observations are appended to the existing stack, so the chronological order of observations looks like:
+       [Obs{N}, Obs{N-1}, ..., Obs{2}, Obs{1: most recent}]
 
     Args:
         obs (numpy.ndarray): Observation.
@@ -16,7 +18,7 @@ def stack_observations(obs, stack_len, obs_stack=None):
             If None, passed `obs` will be repeated for `stack_len` times.
 
     Returns (numpy.ndarray):
-        Stack of observations.
+        Stacked observations along last axis.
     """
     stack_axis = np.ndim(obs) - 1
     obs_axis_len = np.shape(obs)[stack_axis]
@@ -27,6 +29,9 @@ def stack_observations(obs, stack_len, obs_stack=None):
         for i in range(stack_len - 1):
             obs_stack = np.append(obs_stack, obs, axis=stack_axis)
     else:
+        # Delete the oldest observation.
+        # Note, that a single observation may have several depth channels e.g RGB,
+        # so that we need to delete each of its channels separately.
         del_indexes = list(range(0, obs_axis_len))
         obs_previous = np.delete(obs_stack, del_indexes, axis=stack_axis)
         obs_stack = np.append(obs_previous, obs, axis=stack_axis)

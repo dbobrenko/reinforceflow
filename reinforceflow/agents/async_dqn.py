@@ -180,12 +180,15 @@ class AsyncDQNAgent(BaseDQNAgent, BaseDiscreteAgent):
             self.writer.add_summary(reward_summary, global_step=obs_counter)
             self.save_weights(log_dir)
         try:
-            while self.obs_counter < steps:
+            while True:
+                obs_counter = self.obs_counter
+                if obs_counter > steps:
+                    break
                 if time.time() - last_log_time >= log_every_sec:
                     last_log_time = time.time()
                     save_and_log()
-                if self.obs_counter - last_target_update >= target_freq:
-                    last_target_update = self.obs_counter
+                if obs_counter - last_target_update >= target_freq:
+                    last_target_update = obs_counter
                     self.target_update()
                 if render:
                     [env.render() for env in envs]

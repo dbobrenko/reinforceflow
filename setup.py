@@ -9,9 +9,7 @@ from reinforceflow.version import version
 install_requires = [
     'numpy',
     'gym>=0.9.1',
-    'scikit-image',
     'six',
-    'matplotlib',
     'opencv-python'
 ]
 

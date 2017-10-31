@@ -177,12 +177,12 @@ class GymPixelWrapper(GymWrapper):
         obs = self._obs_preprocess(obs)
         # Observation stacking
         if self._obs_stack_len > 1:
-            obs = stack_observations(obs, self._obs_stack_len, self._obs_stack)
+            self._obs_stack = stack_observations(obs, self._obs_stack_len, self._obs_stack)
             # Reset observations stack whenever last step is terminal
             if needs_stack_reset:
                 self._obs_stack = None
                 self._prev_obs = None
-        return obs, reward_total, done, info
+        return self._obs_stack, reward_total, done, info
 
     def _reset(self):
         return self._obs_to_rf(self._obs_preprocess(self.env.reset()))
