@@ -72,10 +72,8 @@ class Env(object):
             First observation from the new episode.
         """
         # Reset observations stack
-        self._obs_stack = None
         obs = self._reset()
-        if self._obs_stack_len > 1:
-            self._obs_stack = stack_observations(obs, self._obs_stack_len, self._obs_stack)
+        self._obs_stack = stack_observations(obs, self._obs_stack_len, self._obs_stack)
         return self._obs_stack
 
     def step(self, action):
@@ -95,8 +93,7 @@ class Env(object):
             if done:
                 break
         # Observation stacking
-        if self._obs_stack_len and self._obs_stack_len > 1:
-            self._obs_stack = stack_observations(obs, self._obs_stack_len, self._obs_stack)
+        self._obs_stack = stack_observations(obs, self._obs_stack_len, self._obs_stack)
         return self._obs_stack, reward_total, done, info
 
     def copy(self):

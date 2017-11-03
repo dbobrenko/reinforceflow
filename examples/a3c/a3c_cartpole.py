@@ -17,14 +17,14 @@ reinforceflow.set_random_seed(555)
 
 env_name = 'CartPole-v0'
 env = GymWrapper(env_name)
-steps = 80000
-agent = A3CAgent(env, net_factory=A3CMLPFactory(layer_sizes=(256, 256)),
+steps = 100000
+agent = A3CAgent(env, net_factory=A3CMLPFactory(layer_sizes=(128, 128)),
                  use_gpu=False)
 agent.train(num_threads=8,
             render=False,
             steps=steps,
             optimizer='adam',
-            learning_rate=0.005,
+            learning_rate=0.0007,
             policy=EGreedyPolicy(eps_start=1.0, eps_final=0.5, anneal_steps=0.7 * steps),
             target_freq=5000,
             gamma=0.99,
