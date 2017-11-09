@@ -124,8 +124,8 @@ class AsyncDQNAgent(BaseDQNAgent, BaseDiscreteAgent):
             render (bool): Enables game screen rendering.
             saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
                 When exceeds, overwrites the most earliest checkpoints.
-            ignore_checkpoint (bool): If enabled, training will start from scratch,
-                and overwrite all old checkpoints found at `log_dir` path.
+            ignore_checkpoint (bool): If enabled, training starts from scratch,
+                and overwrites all old checkpoints found at `log_dir` path.
             test_render (bool): Enables rendering for test evaluations.
             test_episodes (int): Number of test episodes. To disable test evaluation, pass 0.
         """
@@ -192,7 +192,6 @@ class AsyncDQNAgent(BaseDQNAgent, BaseDiscreteAgent):
                     self.target_update()
                 if render:
                     [env.render() for env in envs]
-                time.sleep(0.01)
         except KeyboardInterrupt:
             logger.info('Caught Ctrl+C! Stopping training process.')
         self.request_stop = True
@@ -238,7 +237,7 @@ class _ThreadDQNAgent(BaseDQNAgent, Thread):
             grads = tf.gradients(loss, self._weights)
             if gradient_clip:
                 grads, _ = tf.clip_by_global_norm(grads, gradient_clip)
-            grads_vars = tuple(zip(grads, self.global_agent.weights))
+            grads_vars = list(zip(grads, self.global_agent.weights))
             self._train_op = self.global_agent.opt.apply_gradients(grads_vars,
                                                                    self.global_agent.global_step)
             self._sync_op = [self._weights[i].assign(self.global_agent.weights[i])

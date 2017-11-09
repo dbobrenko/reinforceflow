@@ -121,7 +121,7 @@ def add_grads_summary(grad_vars):
     """Adds summary for weights and gradients.
 
     Args:
-        grad_vars (tuple): Gradients and weights tensors.
+        grad_vars (list): List of (gradients, weights) tensors.
     """
     for grad, w in grad_vars:
         tf.summary.histogram(w.name, w)

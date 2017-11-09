@@ -176,7 +176,6 @@ class A3CAgent(BaseAgent):
                     save_and_log()
                 if render:
                     [env.render() for env in envs]
-                time.sleep(0.01)
         except KeyboardInterrupt:
             logger.info('Caught Ctrl+C! Stopping training process.')
         self.request_stop = True
@@ -241,7 +240,7 @@ class _ThreadA3CAgent(BaseAgent, Thread):
             grads = tf.gradients(loss, self._weights)
             if gradient_clip:
                 grads, _ = tf.clip_by_global_norm(grads, gradient_clip)
-            grads_vars = tuple(zip(grads, self.global_agent.weights))
+            grads_vars = list(zip(grads, self.global_agent.weights))
             self._train_op = self.global_agent.opt.apply_gradients(grads_vars,
                                                                    self.global_agent.global_step)
             self._sync_op = [self._weights[i].assign(self.global_agent.weights[i])
