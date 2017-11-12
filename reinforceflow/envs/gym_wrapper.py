@@ -12,7 +12,7 @@ from reinforceflow.core.spaces import DiscreteOneHot, Tuple, Continious
 from reinforceflow.utils import stack_observations, image_preprocess, one_hot
 
 
-def to_rf_space(space):
+def _to_rf_space(space):
     """Converts Gym space instance into Reinforceflow's."""
     if isinstance(space, spaces.Discrete):
         return DiscreteOneHot(space.n)
@@ -31,12 +31,12 @@ def to_rf_space(space):
     if isinstance(space, spaces.Tuple):
         converted_spaces = []
         for sub_space in space.spaces:
-            converted_spaces.append(to_rf_space(sub_space))
+            converted_spaces.append(_to_rf_space(sub_space))
         return Tuple(*converted_spaces)
     raise ValueError("Unsupported space %s." % space)
 
 
-def make_gym2rf_converter(space):
+def _make_gym2rf_converter(space):
     """Makes space converter function that maps space samples Gym -> rf."""
     # TODO: add spaces.MultiDiscrete support.
     if isinstance(space, spaces.Discrete):
@@ -55,7 +55,7 @@ def make_gym2rf_converter(space):
     if isinstance(space, spaces.Tuple):
         sub_converters = []
         for sub_space in space.spaces:
-            sub_converters.append(make_gym2rf_converter(sub_space))
+            sub_converters.append(_make_gym2rf_converter(sub_space))
 
         def converter(sample):
             converted_tuple = []
@@ -66,7 +66,7 @@ def make_gym2rf_converter(space):
     raise ValueError("Unsupported space %s." % space)
 
 
-def make_rf2gym_converter(space):
+def _make_rf2gym_converter(space):
     """Makes space converter function that maps space samples rf -> Gym."""
     # TODO: add spaces.MultiDiscrete support.
     if isinstance(space, spaces.Discrete):
@@ -85,7 +85,7 @@ def make_rf2gym_converter(space):
     if isinstance(space, spaces.Tuple):
         sub_converters = []
         for sub_space in space.spaces:
-            sub_converters.append(make_rf2gym_converter(sub_space))
+            sub_converters.append(_make_rf2gym_converter(sub_space))
 
         def converter(sample):
             converted_tuple = []
@@ -101,19 +101,21 @@ class GymWrapper(Env):
     See `Env`.
     """
     def __init__(self, env, action_repeat=1, obs_stack=1):
+        self._kwargs = locals()
+        del self._kwargs['self']
+        del self._kwargs['__class__']
         if isinstance(env, six.string_types):
             env = gym.make(env)
         if isinstance(env.action_space, spaces.MultiDiscrete):
             raise ValueError("Gym environments with MultiDiscrete spaces aren't supported yet.")
-
         super(GymWrapper, self).__init__(env,
-                                         obs_space=to_rf_space(env.observation_space),
-                                         action_space=to_rf_space(env.action_space),
+                                         obs_space=_to_rf_space(env.observation_space),
+                                         action_space=_to_rf_space(env.action_space),
                                          action_repeat=action_repeat,
                                          obs_stack=obs_stack)
-        self._obs_to_rf = make_gym2rf_converter(self.obs_space)
-        self._action_to_rf = make_rf2gym_converter(self.action_space)
-        self._action_to_gym = make_rf2gym_converter(self.action_space)
+        self._obs_to_rf = _make_gym2rf_converter(self.obs_space)
+        self._action_to_rf = _make_rf2gym_converter(self.action_space)
+        self._action_to_gym = _make_rf2gym_converter(self.action_space)
         seed = reinforceflow.get_random_seed()
         if seed and hasattr(self.env, 'seed'):
             self.env.seed(seed)
@@ -129,6 +131,9 @@ class GymWrapper(Env):
     def render(self):
         self.env.render()
 
+    def copy(self):
+        return self.__class__(**self._kwargs)
+
 
 class GymPixelWrapper(GymWrapper):
     def __init__(self,
@@ -142,6 +147,9 @@ class GymPixelWrapper(GymWrapper):
         super(GymPixelWrapper, self).__init__(env,
                                               action_repeat=action_repeat,
                                               obs_stack=obs_stack)
+        self._kwargs = locals()
+        del self._kwargs['self']
+        del self._kwargs['__class__']
         if not isinstance(self.obs_space, Continious) or len(self.obs_space.shape) != 3:
             raise ValueError('%s expects observation space with pixel inputs; '
                              'i.e. 3-D tensor (H, W, C).' % self.__class__.__name__)

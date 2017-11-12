@@ -192,6 +192,7 @@ class AsyncDQNAgent(BaseDQNAgent, BaseDiscreteAgent):
                     self.target_update()
                 if render:
                     [env.render() for env in envs]
+                time.sleep(0.01)
         except KeyboardInterrupt:
             logger.info('Caught Ctrl+C! Stopping training process.')
         self.request_stop = True

@@ -30,11 +30,10 @@ agent.train(num_threads=8,
             render=False,
             steps=steps,
             optimizer='adam',
-            learning_rate=0.00005,
+            learning_rate=0.00002,
             policy=policies,
             target_freq=40000,
             gamma=0.99,
             batch_size=5,
             log_every_sec=600,
-            log_dir='/tmp/reinforceflow/%s/async_dqn/adam/' % env_name)
-
+            log_dir='/tmp/reinforceflow/%s/async_dqn/adam_copy_2e5' % env_name)

@@ -6,8 +6,8 @@ import unittest
 import numpy as np
 import numpy.testing as npt
 from gym import spaces
-from reinforceflow.envs.gym_wrapper import make_gym2rf_converter
-from reinforceflow.envs.gym_wrapper import make_rf2gym_converter
+from reinforceflow.envs.gym_wrapper import _make_gym2rf_converter
+from reinforceflow.envs.gym_wrapper import _make_rf2gym_converter
 
 
 def _compare_recursively(sample1, sample2):
@@ -44,33 +44,33 @@ class TestConverters(unittest.TestCase):
                                tuple([self.rf_out_d, self.rf_out_c])])
 
     def test_gym2rf_converter_discrete(self):
-        converter = make_gym2rf_converter(self.space_d)
+        converter = _make_gym2rf_converter(self.space_d)
         npt.assert_equal(converter(self.gym_out_d), self.rf_out_d)
 
     def test_gym2rf_converter_box(self):
-        converter = make_gym2rf_converter(self.space_c)
+        converter = _make_gym2rf_converter(self.space_c)
         npt.assert_equal(converter(self.gym_out_c), self.rf_out_c)
 
     def test_gym2rf_converter_binary(self):
-        converter = make_gym2rf_converter(self.space_b)
+        converter = _make_gym2rf_converter(self.space_b)
         npt.assert_equal(converter(self.gym_out_b), self.rf_out_b)
 
     def test_gym2rf_converter_tuple(self):
-        converter = make_gym2rf_converter(self.space_t)
+        converter = _make_gym2rf_converter(self.space_t)
         _compare_recursively(converter(self.gym_out_t), self.rf_out_t)
 
     def test_rf2gym_converter_discrete(self):
-        converter = make_rf2gym_converter(self.space_d)
+        converter = _make_rf2gym_converter(self.space_d)
         assert converter(self.rf_out_d) == self.gym_out_d
 
     def test_rf2gym_converter_box(self):
-        converter = make_rf2gym_converter(self.space_c)
+        converter = _make_rf2gym_converter(self.space_c)
         npt.assert_equal(converter(self.rf_out_c), self.gym_out_c)
 
     def test_rf2gym_converter_binary(self):
-        converter = make_rf2gym_converter(self.space_b)
+        converter = _make_rf2gym_converter(self.space_b)
         npt.assert_equal(converter(self.rf_out_b), self.gym_out_b)
 
     def test_rf2gym_converter_tuple(self):
-        converter = make_rf2gym_converter(self.space_t)
+        converter = _make_rf2gym_converter(self.space_t)
         _compare_recursively(converter(self.rf_out_t), self.gym_out_t)
