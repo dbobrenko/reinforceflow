@@ -36,4 +36,4 @@ agent.train(num_threads=8,
             gamma=0.99,
             batch_size=5,
             log_every_sec=600,
-            log_dir='/tmp/reinforceflow/%s/async_dqn/adam_copy_2e5' % env_name)
+            log_dir='/tmp/reinforceflow/%s/async_dqn/adam' % env_name)
