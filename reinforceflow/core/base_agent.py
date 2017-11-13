@@ -39,7 +39,7 @@ class BaseAgent(object):
         self._scope = '' if not name else name + '/'
         # Inference Graph
         with tf.variable_scope(self._scope + 'network') as scope:
-            self._action_ph = tf.placeholder('int32', [None] + list(self.env.action_space.shape),
+            self._action_ph = tf.placeholder('float32', [None] + list(self.env.action_space.shape),
                                              name='action')
             self._reward_ph = tf.placeholder('float32', [None], name='reward')
             self.net = self._net_factory.make(input_space=self.env.obs_space,
@@ -65,14 +65,14 @@ class BaseAgent(object):
             learning_rate (float or Tensor): Optimizer's learning rate.
             optimizer_args (dict): Keyword arguments used for optimizer creation.
             decay (function): Learning rate decay.
-                              Expects tensorflow decay function or function name string.
-                              Available name strings: 'polynomial', 'exponential'.
-                              To disable, pass None.
+                Expects tensorflow decay function or function name string.
+                Available name strings: 'polynomial', 'exponential'.
+                To disable, pass None.
             decay_args (dict): Keyword arguments, passed to the decay function.
             gradient_clip (float): Norm gradient clipping.
-                                   To disable, pass False or None.
+                To disable, pass False or None.
             saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
-                              When exceeds, overwrites the most earliest checkpoints.
+                When exceeds, overwrites the most earliest checkpoints.
         """
         raise NotImplementedError
 

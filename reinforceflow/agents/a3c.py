@@ -115,8 +115,8 @@ class A3CAgent(BaseAgent):
             render (bool): Enables game screen rendering.
             saver_keep (int): Maximum number of checkpoints can be stored in `log_dir`.
                 When exceeds, overwrites the most earliest checkpoints.
-            ignore_checkpoint (bool): If enabled, training will start from scratch,
-                and overwrite all old checkpoints found at `log_dir` path.
+            ignore_checkpoint (bool): If enabled, training starts from scratch,
+                and overwrites all old checkpoints found at `log_dir` path.
             test_render (bool): Enables rendering for test evaluations.
             test_episodes (int): Number of test episodes. To disable test evaluation, pass 0.
         """

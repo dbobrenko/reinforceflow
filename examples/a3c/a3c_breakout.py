@@ -23,7 +23,6 @@ env = GymPixelWrapper(env_name,
                       resize_width=84,
                       resize_height=84,
                       to_gray=True)
-optimizer_args = {'decay': 0.99}
 steps = 80000000
 agent = A3CAgent(env, net_factory=A3CConvFactory(), use_gpu=True)
 policies = [EGreedyPolicy(eps_start=1.0, eps_final=final, anneal_steps=4000000)
@@ -31,13 +30,12 @@ policies = [EGreedyPolicy(eps_start=1.0, eps_final=final, anneal_steps=4000000)
 agent.train(num_threads=8,
             render=False,
             steps=steps,
-            optimizer='rms',
-            optimizer_args=optimizer_args,
-            learning_rate=0.001,
+            optimizer='adam',
+            learning_rate=0.00002,
             policy=policies,
             target_freq=40000,
             gamma=0.99,
             batch_size=5,
             log_every_sec=1800,
             test_render=True,
-            log_dir='/tmp/reinforceflow/%s/a3c/rms_1e3/' % env_name)
+            log_dir='/tmp/reinforceflow/%s/a3c/adam_2e-5/' % env_name)
