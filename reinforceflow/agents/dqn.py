@@ -100,7 +100,7 @@ class DQNAgent(BaseDQNAgent):
             grads = tf.gradients(loss, self._weights)
             if gradient_clip:
                 grads, _ = tf.clip_by_global_norm(grads, gradient_clip)
-            grads_vars = tuple(zip(grads, self._weights))
+            grads_vars = list(zip(grads, self._weights))
             self._train_op = opt.apply_gradients(grads_vars,
                                                  global_step=self.global_step)
         save_vars = set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
