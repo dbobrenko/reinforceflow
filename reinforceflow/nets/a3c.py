@@ -36,7 +36,7 @@ class A3CConv(AbstractModel):
         self._input_ph = tf.placeholder('float32', shape=[None] + list(input_space.shape),
                                         name='inputs')
         net, end_points = make_dqn_body(self.input_ph, trainable)
-        end_points['fc1'] = layers.fully_connected(net, num_outputs=512, activation_fn=tf.nn.relu,
+        end_points['fc1'] = layers.fully_connected(net, num_outputs=256, activation_fn=tf.nn.relu,
                                                    scope='fc1', trainable=trainable)
         gaussian = tf.random_normal_initializer
         v = layers.fully_connected(end_points['fc1'], num_outputs=1,

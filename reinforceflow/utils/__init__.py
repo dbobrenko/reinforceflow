@@ -1,5 +1,5 @@
 from __future__ import absolute_import
 # pylint: disable=wildcard-import
-from reinforceflow.envs.env_wrapper import *
-from reinforceflow.envs.gym_wrapper import *
+from reinforceflow.utils.utils import *
+from reinforceflow.utils.tensor_utils import *
 # pylint: enable=wildcard-import

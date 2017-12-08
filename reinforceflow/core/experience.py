@@ -5,7 +5,7 @@ from __future__ import division
 from operator import itemgetter
 import random
 import numpy as np
-from reinforceflow.core.data_structs import SumTree, MinTree
+from reinforceflow.core.datastruct import SumTree, MinTree
 from reinforceflow import logger
 
 
@@ -14,10 +14,10 @@ class ExperienceReplay(object):
 
     Args:
         capacity (int):  Total replay capacity.
-        min_size (int): Minimum replay size (enables is_ready property, when fills).
         batch_size (int): Size of sampled batch.
+        min_size (int): Minimum replay size (enables is_ready property, when fills).
     """
-    def __init__(self, capacity, min_size, batch_size):
+    def __init__(self, capacity, batch_size, min_size=0):
         if batch_size < 1:
             raise ValueError("Batch size must be higher or equal to 1.")
         if capacity < batch_size:
@@ -45,8 +45,7 @@ class ExperienceReplay(object):
         self._rewards[self._idx] = reward
         self._terms[self._idx] = term
         self._obs[self._idx] = obs
-        # if not term:
-        self._obs[self._idx + 1] = obs_next
+        self._obs[self._idx + 1] = obs if term else obs_next
         self._idx = self._cycle_idx(self._idx + 1)
         self._size = min(self._size + 1, self._capacity)
 
@@ -67,6 +66,10 @@ class ExperienceReplay(object):
         return self._size
 
     @property
+    def batch_size(self):
+        return self._batch_size
+
+    @property
     def is_ready(self):
         return self._size >= self._min_size
 
@@ -79,15 +82,15 @@ class ProportionalReplay(ExperienceReplay):
     Based on paper: https://arxiv.org/pdf/1511.05952.pdf
     Args:
         capacity (int):  Total replay capacity.
-        min_size (int): Minimum replay size (enables is_ready property, when fills).
         batch_size (int): Size of sampled batch.
+        min_size (int): Minimum replay size (enables is_ready property, when fills).
         alpha (float): Exponent which determines how much priority is used.
             (0 - uniform prioritization, 1 - full prioritization).
         beta (float): Exponent which determines how much importance-sampling correction is used.
             (0 - no correction, 1 - full correction).
     """
-    def __init__(self, capacity, min_size, batch_size, alpha=0.7, beta=0.5):
-        super(ProportionalReplay, self).__init__(capacity, min_size, batch_size)
+    def __init__(self, capacity, batch_size, min_size=0, alpha=0.7, beta=0.5):
+        super(ProportionalReplay, self).__init__(capacity, batch_size, min_size)
         assert alpha >= 0
         assert beta >= 0
         self.sumtree = SumTree(capacity)

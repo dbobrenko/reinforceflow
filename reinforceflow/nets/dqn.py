@@ -12,8 +12,11 @@ class DQNFactory(AbstractFactory):
     """Factory for DQN Model.
     See `DQNModel`.
     """
+    def __init__(self, use_nature=True):
+        self.use_nature = use_nature
+
     def make(self, input_space, output_space, trainable=True):
-        return DQNModel(input_space, output_space, trainable)
+        return DQNModel(input_space, output_space, trainable, self.use_nature)
 
 
 class DQNModel(AbstractModel):
@@ -24,14 +27,16 @@ class DQNModel(AbstractModel):
         input_space: (core.spaces.space) Observation space.
         output_space (core.spaces.space) Action space.
     """
-    def __init__(self, input_space, output_space, trainable=True):
+    def __init__(self, input_space, output_space, trainable=True, use_nature=True):
         if isinstance(input_space, Tuple) or isinstance(output_space, Tuple):
             raise ValueError('For tuple action and observation spaces '
                              'consider implementing custom network architecture.')
         self._input_ph = tf.placeholder('float32', shape=[None] + list(input_space.shape),
                                         name='inputs')
-
-        net, end_points = make_dqn_body(self.input_ph, trainable)
+        if use_nature:
+            net, end_points = make_dqn_body_nature(self.input_ph, trainable)
+        else:
+            net, end_points = make_dqn_body(self.input_ph, trainable)
         net = layers.fully_connected(net, num_outputs=512, activation_fn=tf.nn.relu,
                                      scope='fc1', trainable=trainable)
         end_points['fc1'] = net
@@ -51,6 +56,31 @@ class DQNModel(AbstractModel):
 
 
 def make_dqn_body(input_layer, trainable=True):
+    end_points = {}
+    net = layers.conv2d(inputs=input_layer,
+                        num_outputs=16,
+                        kernel_size=[8, 8],
+                        stride=[4, 4],
+                        activation_fn=tf.nn.relu,
+                        padding="same",
+                        scope="conv1",
+                        trainable=trainable)
+    end_points['conv1'] = net
+    net = layers.conv2d(inputs=net,
+                        num_outputs=32,
+                        kernel_size=[4, 4],
+                        stride=[2, 2],
+                        activation_fn=tf.nn.relu,
+                        padding="same",
+                        scope="conv2",
+                        trainable=trainable)
+    end_points['conv2'] = net
+    out = layers.flatten(net)
+    end_points['conv2_flatten'] = out
+    return out, end_points
+
+
+def make_dqn_body_nature(input_layer, trainable=True):
     end_points = {}
     net = layers.conv2d(inputs=input_layer,
                         num_outputs=32,

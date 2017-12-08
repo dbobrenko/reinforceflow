@@ -1,11 +1,15 @@
 from __future__ import absolute_import
-from __future__ import print_function
 from __future__ import division
-import sys
-import random
+from __future__ import print_function
+
 import logging
+import random
+import sys
+
 import numpy as np
 import tensorflow as tf
+from gym import spaces
+
 from reinforceflow.version import version as __version__
 
 __RANDOM_SEED__ = 0
@@ -18,6 +22,7 @@ def set_random_seed(seed):
     __RANDOM_SEED__ = seed
     random.seed(seed)
     np.random.seed(seed)
+    spaces.prng.seed(seed)
     tf.set_random_seed(seed)
 
 

@@ -3,118 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import time
-import six
+
 import tensorflow as tf
-from tensorflow.python.framework import ops
-from reinforceflow.envs import GymPixelWrapper
+
 from reinforceflow import logger
-
-_OPTIMIZER_MAP = {
-    'rms': tf.train.RMSPropOptimizer,
-    'rmsprop': tf.train.RMSPropOptimizer,
-    'rmspropoptimizer': tf.train.RMSPropOptimizer,
-    'adam': tf.train.AdamOptimizer,
-    'adamoptimizer': tf.train.AdamOptimizer,
-    'sgd': tf.train.GradientDescentOptimizer,
-    'gradientdescent': tf.train.GradientDescentOptimizer,
-    'gradientdescentoptimizer': tf.train.GradientDescentOptimizer
-}
-
-
-_DECAY_MAP = {
-    'polynomial_decay': tf.train.polynomial_decay,
-    'polynomial': tf.train.polynomial_decay,
-    'poly': tf.train.polynomial_decay,
-    'exponential_decay': tf.train.exponential_decay,
-    'exponential': tf.train.exponential_decay,
-    'exp': tf.train.exponential_decay
-}
-
-
-def create_optimizer(opt, learning_rate, optimizer_args=None, decay=None,
-                     decay_args=None, global_step=None):
-    """Creates TensorFlow optimizer with given args and learning rate decay.
-
-    Args:
-        opt: TensorFlow optimizer, expects string or callable object.
-        learning_rate (float or Tensor): Optimizer learning rate.
-        optimizer_args (dict): TensorFlow optimizer kwargs.
-        decay (str or function): Learning rate decay. Available: poly, exp.
-        decay_args (dict): Learning rate decay kwargs.
-        global_step (Tensor): Optimizer global step.
-
-    Returns (tuple):
-        Optimizer instance, learning rate tensor.
-    """
-    if optimizer_args is None:
-        optimizer_args = {}
-    # Process learning rate
-    if isinstance(learning_rate, ops.Tensor) and learning_rate.get_shape().ndims == 0:
-        if decay:
-            logger.warn("Passed learning rate is already of type Tensor. "
-                        "Leaving optimizer original learning rate Tensor (%s) unchanged."
-                        % learning_rate)
-    elif isinstance(learning_rate, (float, int)):
-        if learning_rate < 0.0:
-            raise ValueError("Learning rate must be >= 0. Got: %s.", learning_rate)
-        learning_rate = ops.convert_to_tensor(learning_rate, dtype=tf.float32,
-                                              name="learning_rate")
-        if decay:
-            if global_step is None:
-                raise ValueError('Global step must be specified, '
-                                 'in order to use learning rate decay.')
-            if decay_args is None:
-                decay_args = {}
-            learning_rate = create_decay(decay, learning_rate, global_step, **decay_args)
-    else:
-        raise ValueError("Learning rate should be 0d Tensor or float. "
-                         "Got %s of type %s" % (str(learning_rate), str(type(learning_rate))))
-
-    # Create optimizer
-    if callable(opt):
-        return opt(learning_rate=learning_rate, **optimizer_args), learning_rate
-    elif isinstance(opt, six.string_types):
-        opt = opt.lower()
-        if opt not in _OPTIMIZER_MAP:
-            raise ValueError("Unknown optimizer name %s. Available: %s."
-                             % (opt, ', '.join(_OPTIMIZER_MAP)))
-        return _OPTIMIZER_MAP[opt](learning_rate=learning_rate, **optimizer_args), learning_rate
-    else:
-        raise ValueError("Unknown optimizer %s. Should be either a class name string,"
-                         "subclass of Optimizer or any callable object"
-                         "with `learning_rate` argument." % str(opt))
-
-
-def create_decay(decay, learning_rate, global_step, **kwargs):
-    """Creates learning rate decay with given args.
-
-    Args:
-        decay (str): Learning rate decay. Available: poly, exp.
-        learning_rate (float or Tensor): Optimizer learning rate.
-        global_step (Tensor): Optimizer global step.
-        **kwargs: Learning rate decay function kwargs.
-
-    Returns (Tensor):
-        Learning rate with applied decay.
-    """
-    if callable(decay) and hasattr(decay, __name__):
-        decay = decay.__name__
-
-    if isinstance(decay, six.string_types):
-        decay = decay.lower()
-        if decay in ['polynomial_decay', 'polynomial', 'poly']:
-            if 'decay_steps' not in kwargs:
-                raise ValueError('You should specify decay_steps argument for the `%s`'
-                                 ' decay function.' % decay)
-            learning_rate = tf.train.polynomial_decay(learning_rate, global_step, **kwargs)
-        elif decay in ['exponential_decay', 'exponential', 'exp']:
-            learning_rate = tf.train.exponential_decay(learning_rate, global_step, **kwargs)
-        else:
-            raise ValueError('Unknown decay function %s. Available: %s'
-                             % (decay, ', '.join(_DECAY_MAP)))
-    else:
-        raise ValueError('Decay should be either a decay function or a function name string.')
-    return learning_rate
+from reinforceflow.envs import GymPixelWrapper
 
 
 def add_grads_summary(grad_vars):
@@ -169,7 +62,7 @@ class SummaryLogger(object):
 
     def summarize(self, rewards, test_rewards, ep_counter, step_counter, obs_counter,
                   q_values=None, log_performance=True, reset_rewards=True, scope=''):
-        """
+        """Prints passed logs, and generates TensorFlow Summary.
 
         Args:
             rewards (utils.IncrementalAverage): On-policy reward incremental average.
@@ -185,7 +78,7 @@ class SummaryLogger(object):
             reset_rewards (bool): If enabled, resets `rewards` and `test_rewards` counters.
             scope (str): Agent's name scope.
 
-        Returns:
+        Returns (tensorflow.Summary):
             TensorFlow summary logs.
         """
         logs = []

@@ -7,7 +7,7 @@ import abc
 import six
 from six.moves import range
 from reinforceflow.utils import stack_observations
-from reinforceflow.core import Tuple
+from reinforceflow.core.space import Tuple
 
 
 @six.add_metaclass(abc.ABCMeta)

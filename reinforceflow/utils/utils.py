@@ -8,7 +8,8 @@ import numpy as np
 
 def stack_observations(obs, stack_len, obs_stack=None):
     """Stacks observations along last axis.
-       New observations are appended to the existing stack, so the chronological order of observations looks like:
+       New observations are appended to the existing stack,
+       so the chronological order of observations looks like:
        [Obs{N}, Obs{N-1}, ..., Obs{2}, Obs{1: most recent}]
 
     Args:

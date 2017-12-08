@@ -8,12 +8,12 @@ import gym
 from gym import spaces
 import reinforceflow
 from reinforceflow.envs.env_wrapper import Env
-from reinforceflow.core.spaces import DiscreteOneHot, Tuple, Continious
+from reinforceflow.core.space import DiscreteOneHot, Tuple, Continious
 from reinforceflow.utils import stack_observations, image_preprocess, one_hot
 
 
 def _to_rf_space(space):
-    """Converts Gym space instance into Reinforceflow's."""
+    """Converts Gym space instance into ReinforceFlow."""
     if isinstance(space, spaces.Discrete):
         return DiscreteOneHot(space.n)
 
@@ -37,7 +37,7 @@ def _to_rf_space(space):
 
 
 def _make_gym2rf_converter(space):
-    """Makes space converter function that maps space samples Gym -> rf."""
+    """Makes space converter function that maps space samples Gym -> ReinforceFlow."""
     # TODO: add spaces.MultiDiscrete support.
     if isinstance(space, spaces.Discrete):
         def converter(sample):
@@ -67,7 +67,7 @@ def _make_gym2rf_converter(space):
 
 
 def _make_rf2gym_converter(space):
-    """Makes space converter function that maps space samples rf -> Gym."""
+    """Makes space converter function that maps space samples ReinforceFlow -> Gym."""
     # TODO: add spaces.MultiDiscrete support.
     if isinstance(space, spaces.Discrete):
         def converter(sample):
@@ -103,7 +103,8 @@ class GymWrapper(Env):
     def __init__(self, env, action_repeat=1, obs_stack=1):
         self._kwargs = locals()
         del self._kwargs['self']
-        del self._kwargs['__class__']
+        if '__class__' in self._kwargs:
+            del self._kwargs['__class__']
         if isinstance(env, six.string_types):
             env = gym.make(env)
         if isinstance(env.action_space, spaces.MultiDiscrete):
@@ -126,7 +127,8 @@ class GymWrapper(Env):
         return self._obs_to_rf(obs), reward, done, info
 
     def _reset(self):
-        return self._obs_to_rf(self.env.reset())
+        obs = self._obs_to_rf(self.env.reset())
+        return obs
 
     def render(self):
         self.env.render()
@@ -149,7 +151,8 @@ class GymPixelWrapper(GymWrapper):
                                               obs_stack=obs_stack)
         self._kwargs = locals()
         del self._kwargs['self']
-        del self._kwargs['__class__']
+        if '__class__' in self._kwargs:
+            del self._kwargs['__class__']
         if not isinstance(self.obs_space, Continious) or len(self.obs_space.shape) != 3:
             raise ValueError('%s expects observation space with pixel inputs; '
                              'i.e. 3-D tensor (H, W, C).' % self.__class__.__name__)

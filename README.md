@@ -1,16 +1,12 @@
 # ReinforceFlow
 [![Build Status](https://travis-ci.org/dbobrenko/reinforceflow.svg?branch=master)](https://travis-ci.org/dbobrenko/reinforceflow)
 
-**ReinforceFlow** is an AI framework for training and evaluating **Reinforcement Learning** (RL) algorithms.
+A framework for training and evaluating **Reinforcement Learning** (RL) algorithms.
+Built with Python, [TensorFlow framework](https://www.tensorflow.org/) and [OpenAI Gym](https://gym.openai.com/) interface.
 
-ReinforceFlow was initially designed to work with [OpenAI Gym](https://gym.openai.com/) and [OpenAI Universe](https://universe.openai.com/) interface, using [TensorFlow framework](https://www.tensorflow.org/). However, other interfaces, as well as custom environment support, will be added soon.
+:construction: Currently under heavy development and some of its components may suffer from instability issues.
 
 :blue_book: **Documentation coming soon.**
-
-## Requirements
-  1. [OpenAI Gym](https://gym.openai.com/);
-  2. (Installs during setup) TensorFlow >= 1.0.0;
-  3. (Optional) For more environments, you can install [OpenAI Universe](https://universe.openai.com/);
 
 ## Installation
   1. `git clone https://github.com/dbobrenko/reinforceflow.git`
@@ -21,23 +17,22 @@ ReinforceFlow was initially designed to work with [OpenAI Gym](https://gym.opena
 
      `pip install -e .[tf]`
 
+  3. To get examples working, install Gym by following the instructions at [OpenAI Gym repo](https://github.com/openai/gym);
+  4. (Optional) For more environments, you can install [OpenAI Universe](https://universe.openai.com/);
+
+
 
 ## Usage
-All tested examples can be found in `examples` directory.
-
-Some examples:
+Examples can be found in `examples` directory:
 ```
-# To train Async N-step DQN on Pong:
-python examples/async_dqn/adqn_pong.py
+# To train A3C on CartPole:
+python examples/a3c/a3c_carpole.py
 
-# To train Async N-step DQN on CartPole:
-python examples/async_dqn/adqn_cartpole.py
+# To train DQN on CartPole:
+python examples/dqn/dqn_cartpole.py
 
-# To train Double DQN on CartPole:
-python examples/double_dqn/dqn_cartpole.py
-
-# To train Dueling DQN on CartPole:
-python examples/dueling_dqn/dqn_cartpole.py
+# To train DQN w/ Prior Expeience on Pong:
+python examples/dqn/dqn_pong.py
 ```
 
 
@@ -48,7 +43,6 @@ python examples/dueling_dqn/dqn_cartpole.py
   - [x] **Async DQN**: [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783v2) ([**implementation**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/async_dqn.py))
   - [x] [Prioritized Experience Replay](https://arxiv.org/abs/1511.05952v4) ([**implementation**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/core/replay.py))
   - [x] **A3C**: [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783v2) ([**in progress**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/a3c.py))
-  - [ ] Stochastic Policy Gradients
   - [ ] Evolution Strategies
 
 

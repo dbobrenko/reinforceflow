@@ -3,7 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import random
+
 import numpy as np
+
 from reinforceflow.utils import one_hot
 
 
@@ -13,7 +15,8 @@ class BasePolicy(object):
 
 
 class GreedyPolicy(BasePolicy):
-    def select_action(self, env, prediction):
+    @classmethod
+    def select_action(cls, env, prediction, *args, **kwargs):
         return one_hot(env.action_space.shape, np.argmax(prediction))
 
 
