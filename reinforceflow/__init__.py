@@ -8,7 +8,6 @@ import sys
 
 import numpy as np
 import tensorflow as tf
-from gym import spaces
 
 from reinforceflow.version import version as __version__
 
@@ -22,8 +21,9 @@ def set_random_seed(seed):
     __RANDOM_SEED__ = seed
     random.seed(seed)
     np.random.seed(seed)
-    spaces.prng.seed(seed)
     tf.set_random_seed(seed)
+    from gym import spaces
+    spaces.prng.seed(seed)
 
 
 def get_random_seed():
