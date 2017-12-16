@@ -12,18 +12,18 @@ except ImportError:
     import reinforceflow
 from reinforceflow.agents.dqn import DQNAgent
 from reinforceflow.nets import DQNFactory
-from reinforceflow.envs.gym_wrapper import GymPixelWrapper
+from reinforceflow.envs.gym_wrapper import AtariWrapper
 from reinforceflow.core import ExperienceReplay, EGreedyPolicy, Adam
 
 reinforceflow.set_random_seed(555)
 
 env_name = 'PongNoFrameskip-v0'
-env = GymPixelWrapper(env_name,
-                      action_repeat=4,
-                      obs_stack=4,
-                      resize_width=84,
-                      resize_height=84,
-                      to_gray=True)
+env = AtariWrapper(env_name,
+                   action_repeat=4,
+                   obs_stack=4,
+                   new_width=84,
+                   new_height=84,
+                   to_gray=True)
 
 
 agent = DQNAgent(env,
@@ -36,4 +36,4 @@ agent = DQNAgent(env,
                  exp=ExperienceReplay(100000, 32, 10000),
                  log_every_sec=1200)
 
-agent.train(log_dir='/tmp/reinforceflow/%s/%s/exper_adam1e4' % (env_name, agent.name))
+agent.train(log_dir='/tmp/reinforceflow/%s/%s/adam1e-4' % (env_name, agent.name))

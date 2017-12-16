@@ -25,7 +25,7 @@ class BaseAgent(object):
         """Abstract base class for Deep Network-based agents.
 
         Args:
-            env (Env): Environment instance.
+            env (gym.Env): Environment instance.
             net_factory (AbstractFactory): Network factory, defined in nets file.
             device (str): TensorFlow device.
             name (str): Agent's name prefix.
@@ -62,7 +62,7 @@ class BaseAgent(object):
                                                  [None] + list(self.env.action_space.shape),
                                                  name='action')
                 self._reward_ph = tf.placeholder('float32', [None], name='reward')
-                self.net = self._net_factory.make(input_space=self.env.obs_space,
+                self.net = self._net_factory.make(input_space=self.env.observation_space,
                                                   output_space=self.env.action_space)
                 self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope.name)
         # Train Part
@@ -159,7 +159,7 @@ class BaseAgent(object):
         """
         # In seconds
         delta_frame = 1. / max_fps if max_fps else 0
-        env = self.env.copy() if copy_env else self.env
+        env = self.env.new() if copy_env else self.env
         ep_rewards = reinforceflow.utils.IncrementalAverage()
         for _ in range(episodes):
             reward_accum = 0
@@ -247,7 +247,7 @@ class BaseDQNAgent(BaseDiscreteAgent):
     def __init__(self, env, net_factory, device='/gpu:0', name='', **kwargs):
         super(BaseDQNAgent, self).__init__(env, net_factory, device=device, name=name, **kwargs)
         with tf.variable_scope(self._scope + 'target_network') as scope:
-            self._target_net = self._net_factory.make(input_space=self.env.obs_space,
+            self._target_net = self._net_factory.make(input_space=self.env.observation_space,
                                                       output_space=self.env.action_space)
             target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
                                                scope.name)

@@ -11,7 +11,7 @@ import tensorflow as tf
 
 from reinforceflow.version import version as __version__
 
-__RANDOM_SEED__ = 0
+__RANDOM_SEED__ = None
 
 
 def set_random_seed(seed):

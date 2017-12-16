@@ -39,10 +39,10 @@ python examples/dqn/dqn_pong.py
 ## Constantly evolving tasks list:
   - [x] **DQN**: [Human-level control through deep reinforcement learning](http://www.nature.com/nature/journal/v518/n7540/full/nature14236.html) ([**implementation**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
   - [x] **Double DQN**: [Deep Reinforcement Learning with Double Q-learning](https://arxiv.org/abs/1509.06461) ([**implementation**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
-  - [x] **Dueling DQN** [Dueling Network Architectures for Deep Reinforcement Learning](https://arxiv.org/abs/1511.06581) ([**implementation**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/nets/dueling.py))
-  - [x] **Async DQN**: [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783v2) ([**implementation**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/async_dqn.py))
+  - [x] **Dueling DQN** [Dueling Network Architectures for Deep Reinforcement Learning](https://arxiv.org/abs/1511.06581) ([**implementation**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/dqn.py))
   - [x] [Prioritized Experience Replay](https://arxiv.org/abs/1511.05952v4) ([**implementation**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/core/replay.py))
-  - [x] **A3C**: [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783v2) ([**in progress**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/a3c.py))
+  - [x] **Async DQN**: [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783v2) ([**implementation**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/async/adqn.py))
+  - [x] **A3C**: [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783v2) ([**implementation**](https://github.com/dbobrenko/reinforceflow/blob/master/reinforceflow/agents/async/a3c.py))
   - [ ] Evolution Strategies
 
 

@@ -4,10 +4,11 @@ from __future__ import print_function
 
 import time
 
+import gym
 import tensorflow as tf
 
 from reinforceflow import logger
-from reinforceflow.envs import GymPixelWrapper
+from reinforceflow.envs.gym_wrapper import ObservationStackWrap, ImageWrap
 
 
 def add_grads_summary(grad_vars):
@@ -30,22 +31,41 @@ def add_observation_summary(obs, env):
 
     Args:
         obs (Tensor): Observation.
-        env (envs.Env): Environment instance.
+        env (gym.Env): Environment instance.
     """
-    if env.obs_stack == 1:
-        if len(env.obs_space.shape) == 1:
-            tf.summary.histogram('observation', obs)
-        elif len(env.obs_space.shape) == 2:
-            tf.summary.image('observation', obs)
-        elif len(env.obs_space.shape) == 3 and env.obs_space.shape[2] in (1, 3):
-            tf.summary.image('observation', obs)
-    elif isinstance(env, GymPixelWrapper):
-        channels = 1 if env.is_grayscale else 3
-        for obs_id in range(env.obs_stack):
+    # Get all wrappers
+    all_wrappers = {}
+    env_wrapper = env
+    while True:
+        if isinstance(env_wrapper, gym.Wrapper):
+            all_wrappers[env_wrapper.__class__] = env_wrapper
+            env_wrapper = env_wrapper.env
+        else:
+            break
+
+    # Check for grayscale
+    gray = False
+    if ImageWrap in all_wrappers:
+        gray = all_wrappers[ImageWrap].grayscale
+
+    # Check and wrap observation stack
+    if ObservationStackWrap in all_wrappers:
+        channels = 1 if gray else 3
+        for obs_id in range(all_wrappers[ObservationStackWrap].obs_stack):
             o = obs[:, :, :, obs_id*channels:(obs_id+1)*channels]
             tf.summary.image('observation%d' % obs_id, o, max_outputs=1)
+        return
+
+    # Try to wrap current observation
+    if len(env.observation_space.shape) == 1:
+        tf.summary.histogram('observation', obs)
+    elif len(env.observation_space.shape) == 2:
+        tf.summary.image('observation', obs)
+    elif len(env.observation_space.shape) == 3 and env.observation_space.shape[2] in (1, 3):
+        tf.summary.image('observation', obs)
     else:
-        logger.warn('Cannot create summary for observation with shape', env.obs_space.shape)
+        logger.warn('Cannot create summary for observation with shape',
+                    env.observation_space.shape)
 
 
 class SummaryLogger(object):

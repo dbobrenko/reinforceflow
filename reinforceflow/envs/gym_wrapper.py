@@ -2,14 +2,281 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import six
 import numpy as np
 import gym
 from gym import spaces
 import reinforceflow
-from reinforceflow.envs.env_wrapper import Env
 from reinforceflow.core.space import DiscreteOneHot, Tuple, Continious
 from reinforceflow.utils import stack_observations, image_preprocess, one_hot
+
+
+def renewable(cls):
+    """Decorator, that makes possible to clone the env with it's starting arguments.
+    A temporary workaround, since copy.deepcopy works poorly on some environments.
+    Adds `new` method, that creates new env from instance."""
+    init = cls.__init__
+
+    def __init__(self, env, *args, **kwargs):
+        init(self, env, *args, **kwargs)
+        if hasattr(env, 'new'):
+            self.new = lambda: cls(env.new(), *args, **kwargs)
+        elif isinstance(env, str):
+            self.new = lambda: cls(gym.make(env), *args, **kwargs)
+        else:
+            try:
+                env_name = env.spec.id
+                self.new = lambda: cls(gym.make(env_name), *args, **kwargs)
+            except AttributeError:
+                self.new = lambda: cls(copy.deepcopy(env), *args, **kwargs)
+
+    cls.__init__ = __init__
+    return cls
+
+
+@renewable
+class GymWrapper(gym.Wrapper):
+    """Light wrapper around OpenAI Gym and Universe environments."""
+    def __init__(self, env):
+        if isinstance(env, six.string_types):
+            env = gym.make(env)
+        super(GymWrapper, self).__init__(env)
+        if isinstance(env.action_space, spaces.MultiDiscrete):
+            raise ValueError("Gym environments with MultiDiscrete spaces aren't supported yet.")
+        self.observation_space = _to_rf_space(self.env.observation_space)
+        self.action_space = _to_rf_space(self.env.action_space)
+        self._obs_to_rf = _make_gym2rf_converter(self.observation_space)
+        self._action_to_rf = _make_gym2rf_converter(self.action_space)
+        self._action_to_gym = _make_rf2gym_converter(self.action_space)
+        seed = reinforceflow.get_random_seed()
+        if seed and hasattr(self.env, 'seed'):
+            self.env.seed(seed)
+
+    def _step(self, action):
+        gym_action = self._action_to_gym(action)
+        obs, reward, done, info = self.env.step(gym_action)
+        return self._obs_to_rf(obs), reward, done, info
+
+    def _reset(self):
+        obs = self._obs_to_rf(self.env.reset())
+        return obs
+
+
+@renewable
+class AtariWrapper(gym.Wrapper):
+    def __init__(self,
+                 env,
+                 start_action=None,
+                 noop_action=None,
+                 action_repeat=4,
+                 obs_stack=4,
+                 to_gray=True,
+                 new_width=84,
+                 new_height=84):
+        if isinstance(env, six.string_types):
+            env = gym.make(env)
+        super(AtariWrapper, self).__init__(env=env)
+        self.observation_space = self.env.observation_space
+        self.action_space = self.env.action_space
+        self.env = GymWrapper(self.env)
+        if start_action:
+            self.env = FireResetWrap(self.env, start_action=start_action)
+        if noop_action:
+            self.env = RandomNoOpWrap(self.env, noop_action=noop_action)
+        self.env = ImageWrap(self.env, to_gray=to_gray, new_width=new_width, new_height=new_height)
+        self.env = ActionRepeatWrap(self.env, action_repeat=action_repeat)
+        self.env = ObservationStackWrap(self.env, obs_stack=obs_stack)
+        self.observation_space = self.env.observation_space
+        self.action_space = self.env.action_space
+        self.reward_range = self.env.reward_range
+
+
+@renewable
+class ImageWrap(gym.Wrapper):
+    def __init__(self, env, to_gray=False, new_width=None, new_height=None):
+        super(ImageWrap, self).__init__(env=env)
+        self._height = new_height
+        self._width = new_width
+        self._to_gray = to_gray
+        self.observation_space = self.env.observation_space
+        self.action_space = self.env.action_space
+        new_shape = list(self.observation_space.shape)
+        assert isinstance(self.observation_space, Continious) and 2 <= len(new_shape) <= 3,\
+            "Observation space must be continuous 2-D or 3-D tensor."
+        new_shape[0] = new_height if new_height else new_shape[0]
+        new_shape[1] = new_width if new_width else new_shape[1]
+        # Always add channel dimension
+        if len(new_shape) == 2:
+            new_shape.append(1)
+
+        # Check for grayscale
+        if to_gray:
+            new_shape[-1] = 1
+
+        self.observation_space.reshape(tuple(new_shape))
+
+    def _step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        return self._obs_preprocess(obs), reward, done, info
+
+    def _reset(self):
+        return self._obs_preprocess(self.env.reset())
+
+    def _obs_preprocess(self, obs):
+        """Applies such image preprocessing as resizing and converting to grayscale.
+        Also, takes maximum value for each pixel value over the current and previous frame.
+        Used to get around Atari sprites flickering (see Mnih et al. (2015)).
+
+        Args:
+            obs (numpy.ndarray): 2-D or 3-D observation.
+        Returns:
+            (numpy.ndarray) Preprocessed 3-D observation.
+        """
+        obs = image_preprocess(obs, resize_height=self._height, resize_width=self._width,
+                               to_gray=self._to_gray)
+        return obs
+
+    @property
+    def height(self):
+        return self._height
+
+    @property
+    def width(self):
+        return self._width
+
+    @property
+    def grayscale(self):
+        return self._to_gray
+
+
+@renewable
+class ActionRepeatWrap(gym.Wrapper):
+    """
+    Args:
+        action_repeat (int): The number of steps on which the action will be repeated.
+    """
+    def __init__(self, env, action_repeat):
+        super(ActionRepeatWrap, self).__init__(env=env)
+        assert action_repeat > 0, "Action repeat number must be higher than 0."
+        self._action_repeat = action_repeat
+
+    def _step(self, action):
+        obs, reward_total, done, info = self.env.step(action)
+        for _ in range(self._action_repeat - 1):
+            obs, reward, done, info = self.env.step(action)
+            reward_total += reward
+            if done:
+                break
+        return obs, reward_total, done, info
+
+
+@renewable
+class ObservationStackWrap(gym.Wrapper):
+    """
+    Args:
+        obs_stack (int): The length of stacked observations.
+            Provided observation_space shape will be automatically modified.
+            Doesn't support Tuple spaces.
+    """
+    def __init__(self, env,  obs_stack):
+        super(ObservationStackWrap, self).__init__(env=env)
+        assert obs_stack > 1, "Observation stack length must be higher than 1."
+        assert not isinstance(self.observation_space, Tuple),\
+            "Observation stack is not compatible with Tuple spaces."
+        self._obs_stack_len = obs_stack or 1
+        self.observation_space = self.env.observation_space
+        new_shape = list(self.observation_space.shape)
+        new_shape[-1] = self.observation_space.shape[-1] * obs_stack
+        self.observation_space.reshape(tuple(new_shape))
+        self._obs_stack = None
+
+    def _reset(self):
+        obs = self.env.reset()
+        self._obs_stack = stack_observations(obs, self._obs_stack_len, self._obs_stack)
+        return self._obs_stack
+
+    def _step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        self._obs_stack = stack_observations(obs, self._obs_stack_len, self._obs_stack)
+        return self._obs_stack, reward, done, info
+
+    @property
+    def obs_stack(self):
+        """Observation stack length."""
+        return self._obs_stack_len
+
+
+@renewable
+class RandomNoOpWrap(gym.Wrapper):
+    def __init__(self, env, noop_action, noop_max=30, noop_min=0):
+        super(RandomNoOpWrap, self).__init__(env=env)
+        assert self.action_space.contains(noop_action),\
+            "Invalid action %s for %s environment." % (noop_action, self.env)
+        assert noop_max > 0
+        assert noop_min >= 0
+        self._noop_action = noop_action
+        self._noop_max = noop_max
+        self._noop_min = noop_min
+
+    def _reset(self, **kwargs):
+        obs = self.env.reset()
+        skip = np.random.randint(self._noop_min, self._noop_max)
+        for _ in range(skip):
+            obs, _, done, _ = self.env.step(self._noop_action)
+            if done:
+                obs = self.env.reset(**kwargs)
+        return obs
+
+
+@renewable
+class FireResetWrap(gym.Wrapper):
+    def __init__(self, env, start_action):
+        super(FireResetWrap, self).__init__(env=env)
+        assert self.action_space.contains(start_action),\
+            "Invalid action %s for %s environment." % (start_action, self.env)
+        self._start_action = start_action
+
+    def _reset(self, **kwargs):
+        self.env.reset(**kwargs)
+        obs, _, done, _ = self.env.step(self._start_action)
+        if done:
+            obs = self.env.reset(**kwargs)
+        return obs
+
+
+@renewable
+class ALELifeResetEnv(FireResetWrap):
+    def __init__(self, env, start_action):
+        """Make end-of-life == end-of-episode, but only reset on true game over.
+        Done by DeepMind for the DQN and co. since it helps value estimation.
+        """
+        super(ALELifeResetEnv, self).__init__(env=env, start_action=start_action)
+        self.env = FireResetWrap(self.env, start_action=start_action)
+        self._lives = 0
+        self._needs_reset = True
+        self._last_obs = None
+
+    def _step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        self._needs_reset = done
+        lives = self.env.unwrapped.ale.lives()
+        if self._lives > lives > 0:
+            done = True
+        self._lives = lives
+        return obs, reward, done, info
+
+    def _reset(self, **kwargs):
+        """Reset only when lives are exhausted.
+        This way all states are still reachable even though lives are episodic,
+        and the learner need not know about any of this behind-the-scenes.
+        """
+        if self._needs_reset:
+            self._last_obs = self.env.reset()
+        elif self._start_action:
+            self._last_obs, _, _, _ = self.env.step(self._start_action)
+        self._lives = self.env.unwrapped.ale.lives()
+        return self._last_obs
 
 
 def _to_rf_space(space):
@@ -37,7 +304,7 @@ def _to_rf_space(space):
 
 
 def _make_gym2rf_converter(space):
-    """Makes space converter function that maps space samples Gym -> ReinforceFlow."""
+    """Makes converter function that maps space samples Gym -> ReinforceFlow."""
     # TODO: add spaces.MultiDiscrete support.
     if isinstance(space, spaces.Discrete):
         def converter(sample):
@@ -95,135 +362,3 @@ def _make_rf2gym_converter(space):
         return converter
     raise ValueError("Unsupported space %s." % space)
 
-
-class GymWrapper(Env):
-    """Light wrapper around OpenAI Gym and Universe environments.
-    See `Env`.
-    """
-    def __init__(self, env, action_repeat=1, obs_stack=1):
-        self._kwargs = locals()
-        del self._kwargs['self']
-        if '__class__' in self._kwargs:
-            del self._kwargs['__class__']
-        if isinstance(env, six.string_types):
-            env = gym.make(env)
-        if isinstance(env.action_space, spaces.MultiDiscrete):
-            raise ValueError("Gym environments with MultiDiscrete spaces aren't supported yet.")
-        super(GymWrapper, self).__init__(env,
-                                         obs_space=_to_rf_space(env.observation_space),
-                                         action_space=_to_rf_space(env.action_space),
-                                         action_repeat=action_repeat,
-                                         obs_stack=obs_stack)
-        self._obs_to_rf = _make_gym2rf_converter(self.obs_space)
-        self._action_to_rf = _make_rf2gym_converter(self.action_space)
-        self._action_to_gym = _make_rf2gym_converter(self.action_space)
-        seed = reinforceflow.get_random_seed()
-        if seed and hasattr(self.env, 'seed'):
-            self.env.seed(seed)
-
-    def _step(self, action):
-        gym_action = self._action_to_gym(action)
-        obs, reward, done, info = self.env.step(gym_action)
-        return self._obs_to_rf(obs), reward, done, info
-
-    def _reset(self):
-        obs = self._obs_to_rf(self.env.reset())
-        return obs
-
-    def render(self):
-        self.env.render()
-
-    def copy(self):
-        return self.__class__(**self._kwargs)
-
-
-class GymPixelWrapper(GymWrapper):
-    def __init__(self,
-                 env,
-                 action_repeat,
-                 obs_stack,
-                 to_gray=False,
-                 resize_width=None,
-                 resize_height=None,
-                 merge_last_frames=False):
-        super(GymPixelWrapper, self).__init__(env,
-                                              action_repeat=action_repeat,
-                                              obs_stack=obs_stack)
-        self._kwargs = locals()
-        del self._kwargs['self']
-        if '__class__' in self._kwargs:
-            del self._kwargs['__class__']
-        if not isinstance(self.obs_space, Continious) or len(self.obs_space.shape) != 3:
-            raise ValueError('%s expects observation space with pixel inputs; '
-                             'i.e. 3-D tensor (H, W, C).' % self.__class__.__name__)
-        # if self.obs_space.shape[-1] not in [1, 3]:
-        #     raise ValueError('%s expects input observations '
-        #                      'with channel size equal to 1 or 3.' % self.__class__.__name__)
-        self._height = resize_height
-        self._width = resize_width
-        self._to_gray = to_gray
-        new_shape = list(self.obs_space.shape)
-        new_shape[0] = resize_height if resize_height else new_shape[0]
-        new_shape[1] = resize_width if resize_width else new_shape[1]
-        if to_gray:
-            new_shape[-1] = obs_stack
-        self.obs_space.reshape(tuple(new_shape))
-
-        self._use_merged_frame = merge_last_frames
-        self.has_lives = hasattr(self.env, 'ale') and hasattr(self.env.ale, 'lives')
-        self._prev_obs = None
-
-    def step(self, action):
-        """See `Env.step`."""
-        start_lives = self.env.ale.lives() if self.has_lives else 0
-        reward_total = 0
-        done = False
-        needs_stack_reset = False
-        for _ in range(self._action_repeat):
-            obs, reward, done, info = self._step(action)
-            reward_total += reward
-            if done or self.has_lives and self.env.ale.lives() < start_lives:
-                needs_stack_reset = True
-                break
-        obs = self._obs_preprocess(obs)
-        # Observation stacking
-        if self._obs_stack_len > 1:
-            self._obs_stack = stack_observations(obs, self._obs_stack_len, self._obs_stack)
-            # Reset observations stack whenever last step is terminal
-            if needs_stack_reset:
-                self._obs_stack = None
-                self._prev_obs = None
-        return self._obs_stack, reward_total, done, info
-
-    def _reset(self):
-        return self._obs_to_rf(self._obs_preprocess(self.env.reset()))
-
-    def _obs_preprocess(self, obs):
-        """Applies such image preprocessing as resizing and converting to grayscale.
-        Also, takes maximum value for each pixel value over the current and previous frame.
-        Used to get around Atari sprites flickering (see Mnih et al. (2015)).
-
-        Args:
-            obs (numpy.ndarray): 2-D or 3-D observation.
-        Returns:
-            (numpy.ndarray) Preprocessed 3-D observation.
-        """
-        obs = image_preprocess(obs, resize_height=self.height,
-                               resize_width=self.width, to_gray=self._to_gray)
-        if self._use_merged_frame and self._prev_obs is not None:
-            prev_obs = self._prev_obs
-            self._prev_obs = obs
-            obs = np.maximum.reduce([obs, prev_obs]) if prev_obs else obs
-        return obs
-
-    @property
-    def height(self):
-        return self._height
-
-    @property
-    def width(self):
-        return self._width
-
-    @property
-    def is_grayscale(self):
-        return self._to_gray

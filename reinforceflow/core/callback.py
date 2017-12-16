@@ -9,3 +9,6 @@ class AgentCallback(object):
 
     def on_iter_end(self, agent, logs):
         pass
+
+    def on_log(self, agent, logs):
+        pass

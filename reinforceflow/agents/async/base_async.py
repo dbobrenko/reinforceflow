@@ -29,7 +29,7 @@ class AsyncAgent(BaseAgent):
         See `BaseAgent`.
 
         Args:
-            env (envs.Env): Environment instance.
+            env (gym.Env): Environment instance.
             net_factory (nets.AbstractFactory): Network factory.
             steps (int): [Training-only] Total amount of seen observations across all threads.
             optimizer (str or Optimizer): [Training-only] Agent's optimizer.
@@ -66,7 +66,7 @@ class AsyncAgent(BaseAgent):
             raise ValueError("Number of threads must be >= 1 (Got: %s)." % num_threads)
         self._thread_agents = []
         for t in range(num_threads):
-            agent = thread_agent(env=self.env.copy(),
+            agent = thread_agent(env=self.env.new(),
                                  net_factory=self._net_factory,
                                  global_agent=self,
                                  policy=policy[t],
@@ -106,6 +106,7 @@ class AsyncAgent(BaseAgent):
                     last_log_time = time.time()
                     self.save_weights(log_dir)
                     self._async_eval(self.writer, reward_logger, test_episodes, test_render)
+                    [callback.on_log(self, logs) for callback in callbacks]
                 if render:
                     [agent.env.render() for agent in self._thread_agents]
                 [callback.on_iter_end(self, logs) for callback in callbacks]

@@ -31,7 +31,7 @@ class DQNAgent(BaseDQNAgent):
 
         See `core.BaseDQNAgent`.
         Args:
-            env (envs.Env): Environment instance.
+            env (gym.Env): Environment instance.
             net_factory (nets.AbstractFactory): Network factory.
             use_double (bool): Enables Double DQN.
             restore_from (str): Path to the pre-trained model.
@@ -61,7 +61,7 @@ class DQNAgent(BaseDQNAgent):
         self._use_double = use_double
 
         if optimizer is None:
-            optimizer = RMSProp(0.00025, momentum=0.95)
+            optimizer = RMSProp(0.00025, momentum=0.95, epsilon=0.01, lr_decay='linear')
 
         if self._exp is None:
             self._exp = ProportionalReplay(50000, 32, 32)
@@ -185,16 +185,8 @@ class DQNAgent(BaseDQNAgent):
                     self.save_weights(log_dir)
                     last_log_time = time.time()
                     last_log_ep = self.ep_counter
-
-                    # if test_episodes:
-                    #     test_rewards = self.test(episodes=test_episodes,
-                    #                              render=test_render, copy_env=True)
-                    #     reward_summary = reward_logger.summarize(avg_reward, test_rewards,
-                    #                                              last_log_ep, self.step_counter,
-                    #                                              obs_counter)
-                    #     writer.add_summary(reward_summary, global_step=obs_counter)
                     self._async_eval(writer, reward_logger, test_episodes, test_render)
-
+                    [callback.on_log(self, logs) for callback in callbacks]
                     eps_log = [tf.Summary.Value(tag='agent/epsilon',
                                                 simple_value=self._policy.epsilon)]
                     writer.add_summary(tf.Summary(value=eps_log), global_step=obs_counter)

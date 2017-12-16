@@ -26,7 +26,8 @@ def test_replay_sample():
         for o, a, r, o_next, t, i in zip(obs, action, reward, obs_next, term, idx):
             assert a - 1 == o
             assert r - 2 == o
-            assert o_next - 10 == o
+            if not t:
+                assert o_next - 10 == o
             assert t == o % 20
             assert i == o // 10
     assert len(obs) == batch_size
