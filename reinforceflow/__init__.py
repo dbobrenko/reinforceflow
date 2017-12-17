@@ -32,7 +32,7 @@ def get_random_seed():
 
 
 handler = logging.StreamHandler(sys.stdout)
-formatter = logging.Formatter('[%(asctime)s %(filename)s %(levelname)s] %(message)s')
+formatter = logging.Formatter('[%(asctime)s %(levelname)s] %(message)s')
 handler.setFormatter(formatter)
 logger = logging.getLogger('.'.join(__name__.split('.')))
 logger.propagate = False

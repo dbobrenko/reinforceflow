@@ -73,13 +73,16 @@ class AtariWrapper(gym.Wrapper):
                  obs_stack=4,
                  to_gray=True,
                  new_width=84,
-                 new_height=84):
+                 new_height=84,
+                 clip_rewards=True):
         if isinstance(env, six.string_types):
             env = gym.make(env)
         super(AtariWrapper, self).__init__(env=env)
         self.observation_space = self.env.observation_space
         self.action_space = self.env.action_space
         self.env = GymWrapper(self.env)
+        if clip_rewards:
+            self.env = RewardClipWrap(self.env)
         if start_action:
             self.env = FireResetWrap(self.env, start_action=start_action)
         if noop_action:
@@ -279,6 +282,13 @@ class ALELifeResetEnv(FireResetWrap):
         return self._last_obs
 
 
+@renewable
+class RewardClipWrap(gym.RewardWrapper):
+    def _reward(self, reward):
+        """Clips reward into {-1, 0, 1} range, as suggested in Mnih et al., 2013."""
+        return np.sign(reward)
+
+
 def _to_rf_space(space):
     """Converts Gym space instance into ReinforceFlow."""
     if isinstance(space, spaces.Discrete):
@@ -361,4 +371,3 @@ def _make_rf2gym_converter(space):
             return tuple(converted_tuple)
         return converter
     raise ValueError("Unsupported space %s." % space)
-

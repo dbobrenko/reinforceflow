@@ -145,7 +145,7 @@ class BaseAgent(object):
         """Computes action-values for given batch of observations."""
         return self.sess.run(self.net.output, {self.net.input_ph: obs_batch})
 
-    def test(self, episodes, render=False, max_fps=None, copy_env=False, max_steps=int(1e5)):
+    def test(self, episodes, render=False, max_fps=None, copy_env=False, max_steps=int(1e4)):
         """Tests agent's performance on a given number of episodes.
 
         Args:
@@ -155,20 +155,19 @@ class BaseAgent(object):
             copy_env (bool): If enabled, performs tests on the copy of environment instance.
             max_steps (int): Maximum allowed steps per episode.
 
-        Returns (utils.IncrementalAverage): Average reward per episode.
+        Returns (utils.RewardStats): Average reward per episode.
         """
         # In seconds
         delta_frame = 1. / max_fps if max_fps else 0
         env = self.env.new() if copy_env else self.env
-        ep_rewards = reinforceflow.utils.IncrementalAverage()
+        rewards = reinforceflow.utils.RewardStats()
         for _ in range(episodes):
-            reward_accum = 0
             obs = env.reset()
             for _ in range(max_steps):
                 start_time = time.time()
                 action = self.predict_action(obs)
                 obs, r, terminal, info = env.step(action)
-                reward_accum += r
+                rewards.add(r, terminal)
                 if render:
                     env.render()
                     if delta_frame > 0:
@@ -176,20 +175,22 @@ class BaseAgent(object):
                         time.sleep(delay)
                 if terminal:
                     break
-            ep_rewards.add(reward_accum)
-        return ep_rewards
+        return rewards
 
     def close(self):
         if self.sess:
             self.sess.close()
 
     def _async_eval(self, writer, reward_logger, num_episodes, render,
-                    train_rewards=None, log_fps=True):
+                    train_stats=None, log_fps=True):
+        if num_episodes <= 0:
+            return
+
         def evaluate():
             with self._mutex:
-                test_rewards = self.test(episodes=num_episodes, render=render, copy_env=True)
-                reward_summary = reward_logger.summarize(train_rewards,
-                                                         test_rewards,
+                test_stats = self.test(episodes=num_episodes, render=render, copy_env=True)
+                reward_summary = reward_logger.summarize(train_stats,
+                                                         test_stats,
                                                          self.ep_counter,
                                                          self.step_counter,
                                                          self.obs_counter,

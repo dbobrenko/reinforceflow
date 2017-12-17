@@ -96,59 +96,72 @@ def one_hot(shape, idx):
     return vec
 
 
-class IncrementalAverage(object):
-    """Incremental average counter."""
+class RewardStats(object):
+    """Keeps agent's step and episode reward statistics."""
     def __init__(self):
-        self._total = 0.0
-        self._counter = 0
-        self._min = float('+inf')
-        self._max = float('-inf')
+        self._step_r = 0.0
+        self.episode_sum = 0.0
+        self.step = 0
+        self.episode = 0
+        self.episode_min = float('+inf')
+        self.episode_max = float('-inf')
+        self._ep_running_r = 0.0
 
-    def add(self, value):
-        """Adds value."""
-        self._total += value
-        if value < self._min:
-            self._min = value
-        if value > self._max:
-            self._max = value
-        self._counter += 1
+    def add(self, reward, terminal):
+        """Adds reward and terminal state (end of episode).
+        Args:
+            reward (float): Reward.
+            terminal (bool): Whether the episode was ended.
+        """
+        self._step_r += reward
+        self.step += 1
+        self._ep_running_r += reward
+        # Episode rewards book keeping
+        if terminal:
+            self.episode_sum += self._ep_running_r
+            if self._ep_running_r < self.episode_min:
+                self.episode_min = self._ep_running_r
+            if self._ep_running_r > self.episode_max:
+                self.episode_max = self._ep_running_r
+            self._ep_running_r = 0
+            self.episode += 1
 
-    def add_batch(self, batch):
-        """Adds batch of values."""
-        self._total += np.sum(batch)
-        self._counter += len(batch)
-        value_min = np.min(batch)
-        if value_min < self._min:
-            self._min = value_min
-        value_max = np.max(batch)
-        if value_max > self._max:
-            self._max = value_max
+    def add_batch(self, reward_batch, terminal_batch):
+        """Adds batch with rewards and terminal states (end of episode).
+        Args:
+            reward_batch: List with rewards after each action.
+            terminal_batch: List with booleans indicating the end of the episode after each action.
+        """
+        assert len(reward_batch) == len(terminal_batch)
+        if not np.any(terminal_batch):
+            sum_batch = np.sum(reward_batch)
+            self._step_r += sum_batch
+            self.step += len(reward_batch)
+            self._ep_running_r += sum_batch
+            return
+        # If batch contains terminal state, add by elements
+        for reward, term in zip(reward_batch, terminal_batch):
+            self.add(reward, term)
 
-    @property
-    def max(self):
-        return self._max
+    def step_average(self):
+        """Computes average rewards per step."""
+        return self._step_r / (self.step or 1)
 
-    @property
-    def min(self):
-        return self._min
-
-    @property
-    def sum(self):
-        return self._total
-
-    @property
-    def length(self):
-        return self._counter
-
-    def compute_average(self):
-        """Computes incremental average."""
-        return self._total / (self._counter or 1)
+    def episode_average(self):
+        """Computes average rewards per episode."""
+        return self.episode_sum / (self.episode or 1)
 
     def reset(self):
-        """Computes and resets incremental average."""
-        average = self.compute_average()
-        self._total = 0.0
-        self._counter = 0
-        self._min = float('+inf')
-        self._max = float('-inf')
-        return average
+        """Resets all counters.
+        Returns: Average reward per step, Average reward per episode.
+        """
+        ep = self.episode_average()
+        step = self.step_average()
+        self._step_r = 0.0
+        self.step = 0
+        self.episode_sum = 0.0
+        self._ep_running_r = 0.0
+        self.episode = 0
+        self.episode_min = float('+inf')
+        self.episode_max = float('-inf')
+        return step, ep

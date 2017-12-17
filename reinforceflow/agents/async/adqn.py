@@ -99,10 +99,7 @@ class _ThreadDQNAgent(AsyncThreadAgent, BaseDQNAgent):
         expected_reward = 0
         if not term:
             expected_reward = np.max(self.global_agent.target_predict(obs_next))
-            self._ep_q.add(expected_reward)
-        else:
-            self._ep_reward.add(self._reward_accum)
-            self._reward_accum = 0
+            self._q_stats.add(expected_reward, term)
         rewards = discount_rewards(rewards, self.gamma, expected_reward)
         _, summary = self.sess.run([self._train_op, self._summary_op if summarize else self._no_op],
                                    feed_dict={

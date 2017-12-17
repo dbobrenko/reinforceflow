@@ -145,12 +145,10 @@ class DQNAgent(BaseDQNAgent):
     def _train(self, log_dir, render, test_episodes, test_render, callbacks):
         reward_logger = tensor_utils.SummaryLogger(self.step_counter, self.obs_counter)
         writer = tf.summary.FileWriter(log_dir, self.sess.graph)
-        avg_reward = reinforceflow.utils.IncrementalAverage()
+        reward_stats = reinforceflow.utils.RewardStats()
         obs_counter = self.obs_counter
-        last_log_ep = self.ep_counter
         last_log_time = time.time()
         last_target_sync = obs_counter
-        ep_reward = 0
         obs = self.env.reset()
         while obs_counter < self._steps:
             obs_counter = self.increment_obs_counter()
@@ -164,14 +162,13 @@ class DQNAgent(BaseDQNAgent):
             logs['obs'] = obs
             logs['obs_next'] = obs_next
             logs['reward_raw'] = reward
-            ep_reward += reward
-            reward = np.clip(reward, -1, 1)
+            reward_stats.add(reward, term)
             self._exp.add(obs, action, reward, obs_next, term)
             obs = obs_next
             if self._exp.is_ready and obs_counter % self._update_freq == 0:
                 b_obs, b_action, b_reward, b_obs_next, b_term, b_idxs, b_is = self._exp.sample()
-                summarize = (self.ep_counter > last_log_ep
-                             and time.time() - last_log_time > self._log_freq)
+                # self.ep_counter > last_log_ep and
+                summarize = time.time() - last_log_time > self._log_freq
                 td_error, summary_str = self.train_on_batch(b_obs, b_action, b_reward, b_obs_next,
                                                             b_term, summarize, b_is)
                 if hasattr(self._exp, 'update'):
@@ -184,8 +181,8 @@ class DQNAgent(BaseDQNAgent):
                 if summarize:
                     self.save_weights(log_dir)
                     last_log_time = time.time()
-                    last_log_ep = self.ep_counter
-                    self._async_eval(writer, reward_logger, test_episodes, test_render)
+                    self._async_eval(writer, reward_logger, test_episodes, test_render,
+                                     train_stats=reward_stats)
                     [callback.on_log(self, logs) for callback in callbacks]
                     eps_log = [tf.Summary.Value(tag='agent/epsilon',
                                                 simple_value=self._policy.epsilon)]
@@ -194,13 +191,11 @@ class DQNAgent(BaseDQNAgent):
                         writer.add_summary(summary_str, global_step=obs_counter)
             if term:
                 self.increment_ep_counter()
-                avg_reward.add(ep_reward)
-                ep_reward = 0
                 obs = self.env.reset()
             logs['term'] = term
             logs['action'] = action
             logs['reward'] = reward
-            logs['episode_reward'] = ep_reward
+            logs['episode_reward'] = reward_stats.episode_average()
             [callback.on_iter_end(self, logs) for callback in callbacks]
         logger.info('Performing final evaluation.')
         self._async_eval(writer, reward_logger, test_episodes, test_render)

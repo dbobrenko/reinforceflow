@@ -87,10 +87,7 @@ class _ThreadA3CAgent(AsyncThreadAgent, Thread):
         expected_value = 0
         if not term:
             expected_value = self.sess.run(self.net.output_value, {self.net.input_ph: obs_next})
-            self._ep_q.add(expected_value)
-        else:
-            self._ep_reward.add(self._reward_accum)
-            self._reward_accum = 0
+            self._q_stats.add(expected_value, term)
         rewards = discount_rewards(rewards, self.gamma, expected_value)
         _, summary = self.sess.run([self._train_op, self._summary_op if summarize else self._no_op],
                                    feed_dict={

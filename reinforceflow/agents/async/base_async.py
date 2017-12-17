@@ -135,8 +135,8 @@ class AsyncThreadAgent(BaseAgent, Thread):
         self.batch_size = batch_size
         self.device = device
         self.log_every_sec = log_every_sec
-        self._ep_reward = reinforceflow.utils.IncrementalAverage()
-        self._ep_q = reinforceflow.utils.IncrementalAverage()
+        self._reward_stats = reinforceflow.utils.RewardStats()
+        self._q_stats = reinforceflow.utils.RewardStats()
         self._reward_accum = 0
 
     def train_on_batch(self, obs, actions, rewards, obs_next, term, summarize=False):
@@ -148,9 +148,8 @@ class AsyncThreadAgent(BaseAgent, Thread):
     def run(self):
         reward_logger = tensor_utils.SummaryLogger(self.global_agent.step_counter,
                                                    self.global_agent.obs_counter)
-        self._ep_reward.reset()
-        self._ep_q.reset()
-        self._reward_accum = 0
+        self._reward_stats.reset()
+        self._q_stats.reset()
         last_log_time = time.time()
         obs = self.env.reset()
         term = True
@@ -166,28 +165,24 @@ class AsyncThreadAgent(BaseAgent, Thread):
                 batch_obs.append(obs)
                 action = self.predict_action(obs, self.policy, obs_counter)
                 obs, reward, term, info = self.env.step(action)
-
-                self._reward_accum += reward
-                reward = np.clip(reward, -1, 1)
+                self._reward_stats.add(reward, term)
                 batch_rewards.append(reward)
                 batch_actions.append(action)
-            write_summary = (term and self.log_every_sec
+            write_summary = (self.log_every_sec
                              and time.time() - last_log_time > self.log_every_sec)
             summary_str = self.train_on_batch(batch_obs, batch_actions, batch_rewards, [obs],
                                               term, write_summary)
             if write_summary:
                 last_log_time = time.time()
-                reward_summary = reward_logger.summarize(self._ep_reward, None,
+                reward_summary = reward_logger.summarize(self._reward_stats, None,
                                                          self.global_agent.ep_counter,
                                                          self.global_agent.step_counter,
                                                          obs_counter,
-                                                         q_values=self._ep_q,
+                                                         q_values=self._q_stats,
                                                          log_performance=False,
                                                          scope=self._scope)
                 self.global_agent.writer.add_summary(reward_summary, global_step=obs_counter)
-                avg_q = self._ep_q.reset()
-                logs = [tf.Summary.Value(tag=self._scope + 'avg_Q', simple_value=avg_q),
-                        tf.Summary.Value(tag=self._scope + 'epsilon',
+                logs = [tf.Summary.Value(tag=self._scope + 'epsilon',
                                          simple_value=self.policy.epsilon)]
                 self.global_agent.writer.add_summary(tf.Summary(value=logs),
                                                      global_step=obs_counter)
