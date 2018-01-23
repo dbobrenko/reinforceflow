@@ -2,8 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 import gym
 import tensorflow as tf
 
@@ -32,7 +30,7 @@ def add_observation_summary(obs, env):
         obs (Tensor): Observation.
         env (gym.Env): Environment instance.
     """
-    from reinforceflow.envs.gym_wrapper import ObservationStackWrap, ImageWrap
+    from reinforceflow.envs.wrapper import ObservationStackWrap, ImageWrap
     # Get all wrappers
     all_wrappers = {}
     env_wrapper = env
@@ -51,7 +49,7 @@ def add_observation_summary(obs, env):
     # Check and wrap observation stack
     if ObservationStackWrap in all_wrappers:
         channels = 1 if gray else 3
-        for obs_id in range(all_wrappers[ObservationStackWrap].obs_stack):
+        for obs_id in range(all_wrappers[ObservationStackWrap].stack_len):
             o = obs[:, :, :, obs_id*channels:(obs_id+1)*channels]
             tf.summary.image('observation%d' % obs_id, o, max_outputs=1)
         return
@@ -68,85 +66,7 @@ def add_observation_summary(obs, env):
                     env.observation_space.shape)
 
 
-class SummaryLogger(object):
-    def __init__(self, step_counter, obs_counter):
-        """Agent's performance logger.
-
-        Args:
-            step_counter (int): Initial optimizer update step.
-            obs_counter (int): Initial observation counter.
-        """
-        self.last_time = time.time()
-        self.last_step = step_counter
-        self.last_obs = obs_counter
-
-    def summarize(self, rewards, test_rewards, ep_counter, step_counter, obs_counter,
-                  q_values=None, log_performance=True, reset_stats=True, scope=''):
-        """Prints passed logs, and generates TensorFlow Summary.
-
-        Args:
-            rewards (utils.RewardStats): On-policy reward incremental average.
-                To disable reward logging, pass None.
-            test_rewards (utils.RewardStats): Greedy-policy reward incremental average.
-                To disable test reward logging, pass None.
-            ep_counter (int): Episode counter.
-            step_counter (int): Optimizer update step counter.
-            obs_counter (int): Observation counter. To disable performance logging, pass None.
-            q_values (utils.RewardStats): On-policy max Q-values incremental average.
-                Used in DQN-like agents. To disable Q-values logging, pass None.
-            log_performance (bool): Enables performance logging.
-            reset_stats (bool): If enabled, resets passed stats counters.
-            scope (str): Agent's name scope.
-
-        Returns (tensorflow.Summary):
-            TensorFlow summary logs.
-        """
-        value = tf.Summary.Value
-        logs = []
-        print_info = ''
-        if rewards:
-            step_av = rewards.step_average()
-            episode_av = rewards.episode_average()
-            print_info += "Av.Episode R: %.2f. " % episode_av
-            print_info += "Av.Step R: %.2f. " % step_av
-            logs += [value(tag=scope+'av_step_R', simple_value=step_av),
-                     value(tag=scope+'av_ep_R', simple_value=episode_av)]
-            if reset_stats:
-                rewards.reset()
-
-        if q_values:
-            avg_q = q_values.step_average()
-            print_info += "Av.Q: %.2f. " % avg_q
-            logs += [value(tag=scope+'av_Q', simple_value=avg_q)]
-            if reset_stats:
-                q_values.reset()
-
-        if test_rewards:
-            test_step_av = test_rewards.step_average()
-            test_episode_av = test_rewards.episode_average()
-            print_info += "Greedy Av.Episode R: %.2f. " % test_rewards.episode_average()
-            print_info += "Greedy Av.Step R: %.2f. " % test_rewards.step_average()
-            logs += [value(tag=scope+'av_greedy_step_R', simple_value=test_step_av),
-                     value(tag=scope+'av_greedy_ep_R', simple_value=test_episode_av)]
-            if reset_stats:
-                test_rewards.reset()
-
-        if print_info:
-            name = scope.replace('/', '') + '. ' if len(scope) else scope
-            print_info = "%s%sObs: %d. Update step: %d. Ep: %d" \
-                         % (name, print_info, obs_counter, step_counter, ep_counter)
-            logger.info(print_info)
-
-        if log_performance:
-            step_per_sec = (step_counter - self.last_step) / (time.time() - self.last_time)
-            obs_per_sec = (obs_counter - self.last_obs) / (time.time() - self.last_time)
-            logger.info("Obs/sec: %0.2f. Optimizer update/sec: %0.2f."
-                        % (obs_per_sec, step_per_sec))
-            logs += [value(tag=scope+'total_ep', simple_value=ep_counter),
-                     value(tag=scope+'step_per_sec', simple_value=step_per_sec),
-                     value(tag=scope+'obs_per_sec', simple_value=obs_per_sec),
-                     ]
-            self.last_step = step_counter
-            self.last_obs = obs_counter
-            self.last_time = time.time()
-        return tf.Summary(value=logs)
+def torch_like_initializer():
+    return tf.contrib.layers.variance_scaling_initializer(factor=1/3,
+                                                          mode='FAN_IN',
+                                                          uniform=True)

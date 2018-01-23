@@ -53,7 +53,7 @@ class Decay(object):
         Adds 'learning_rate' scalar summary.
 
         Args:
-            decay_steps (int): Total amount of steps.
+            decay_steps (int): Total amount of step.
             step (Tensor): Step counter.
 
         Returns (Operation):

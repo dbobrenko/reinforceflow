@@ -43,9 +43,9 @@ class DiscreteOneHot(Space, _spaces.Discrete):
         self.n = np.asscalar(np.asarray(n))
 
 
-class Continious(Space, _spaces.Box):
+class Continuous(Space, _spaces.Box):
     def __init__(self, low, high, shape=None):
-        super(Continious, self).__init__(low, high, shape)
+        super(Continuous, self).__init__(low, high, shape)
 
     def reshape(self, new_shape):
         low_value = np.min(self.low)
@@ -55,12 +55,6 @@ class Continious(Space, _spaces.Box):
 
 
 class Tuple(Space, _spaces.Tuple):
-    """Continuous Space.
-    Represents a tensor of continuous values.
-
-    Args:
-        spaces: Variable length argument list of spaces.
-    """
     def __init__(self, *spaces):
         self._spaces = spaces
         self._shape = tuple([space.shape for space in spaces])
