@@ -3,7 +3,7 @@ import sys
 from setuptools import setup, find_packages
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'reinforceflow'))
-from reinforceflow.version import version
+from reinforceflow.config import version
 
 
 install_requires = [
