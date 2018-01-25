@@ -26,6 +26,8 @@ install:
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numpy scipy matplotlib pandas pytest h5py
   - source activate test-environment
   - pip install tensorflow
+  - pip install opencv-python
+  - pip install gym
   - pip install -e .
 
 script:
