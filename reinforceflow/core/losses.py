@@ -111,35 +111,3 @@ class TDLoss(BaseLoss):
         if importance_sampling is not None:
             td *= importance_sampling
         return self.coef * tf.reduce_mean(tf.square(td), name=self.name)
-
-
-# UNREAL Loss
-class PixelControlLoss(BaseLoss):
-    def __init__(self, control_layers, num_actions, gridsize=(20, 20), fc_units=(9*9*32,),
-                 deconv_kernel=(4, 4), deconv_strides=(2, 2), coef=1.0):
-        super(PixelControlLoss, self).__init__(coef)
-        self.control_layers = control_layers if utils.isarray(control_layers) else [control_layers]
-        self.fc_units = fc_units if utils.isarray(fc_units) else [fc_units]
-        self.num_actions = num_actions
-        self.gridsize = gridsize
-        self.deconv_kernel = deconv_kernel
-        self.deconv_strides = deconv_strides
-
-    def loss(self, endpoints, reward, importance_sampling=None, **kwargs):
-        assert len(self.control_layers) == len(self.fc_units),\
-            "Number of control layers must be equal to the number of FC (%d != %d)."\
-            % (len(self.control_layers), len(self.fc_units))
-
-        for layer, units in zip(self.control_layers, self.fc_units):
-            flatten = tf.layers.flatten(layer)
-            fc = tf.layers.dense(flatten, units=units, activation=tf.nn.relu)
-            adv = tf.layers.conv2d_transpose(inputs=fc,
-                                             filters=self.num_actions,
-                                             kernel_size=self.deconv_kernel,
-                                             strides=self.deconv_strides)
-            value = tf.layers.conv2d_transpose(inputs=fc,
-                                               filters=self.num_actions,
-                                               kernel_size=self.deconv_kernel,
-                                               strides=self.deconv_strides)
-            # q = value + (adv - tf.reduce_mean(adv, 1, keepdims=True))
-            # TODO
