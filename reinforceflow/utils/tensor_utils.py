@@ -5,7 +5,25 @@ from __future__ import print_function
 import gym
 import tensorflow as tf
 
+from reinforceflow.utils import utils
 from reinforceflow import logger
+
+
+def discount_trajectory_op(rewards, terms, traj_ends, gamma, ev):
+    # Predict EV for bootstrap states
+    # EV len should be equal to the trajectory len or bootstrap states len
+    bootstrap_idx = tf.logical_xor(traj_ends, terms)
+    num_bootstrap = tf.reduce_sum(tf.cast(bootstrap_idx, 'int32'))
+    ev = tf.cond(tf.equal(num_bootstrap, 0),
+                 lambda: tf.zeros_like(traj_ends, 'float32'),
+                 lambda: ev)
+    with tf.device("/cpu:0"):
+        discount = tf.py_func(utils.discount_trajectory,
+                              [rewards, terms, traj_ends, gamma, ev],
+                              tf.float32)
+    # If batch consists from randomly shuffled samples (usually used in Replay trainers)
+    # discount = rewards + gamma * ev
+    return discount
 
 
 def add_grads_summary(grad_vars):
@@ -70,3 +88,13 @@ def torch_like_initializer():
     return tf.contrib.layers.variance_scaling_initializer(factor=1/3,
                                                           mode='FAN_IN',
                                                           uniform=True)
+
+
+_INITIALIZED = set()
+
+
+def initialize_variables(sess):
+    """Initialize all the uninitialized variables in the global scope."""
+    new_variables = set(tf.global_variables()) - _INITIALIZED
+    sess.run(tf.variables_initializer(new_variables))
+    _INITIALIZED.update(new_variables)

@@ -3,12 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 
-class AgentCallback(object):
-    def on_iter_start(self, agent, logs):
+class BaseTrainer(object):
+    def train(self, **kwargs):
         pass
 
-    def on_iter_end(self, agent, logs):
+    def save(self):
         pass
 
-    def on_log(self, agent, logs):
+    def load(self):
         pass

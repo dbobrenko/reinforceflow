@@ -2,22 +2,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
 import numpy as np
 import tensorflow as tf
 
-from reinforceflow import logger
-from reinforceflow.core import ProportionalReplay, EGreedyPolicy, Stats, losses
-from reinforceflow.core.agent import BaseDeepQ
+from reinforceflow.agents.agent import BaseAgent
+from reinforceflow.core import losses, Continuous, Tuple
 from reinforceflow.core.optimizer import Optimizer, RMSProp
-from reinforceflow.core.schedule import Schedule
+from reinforceflow.core.policy import GreedyPolicy
 from reinforceflow.utils import tensor_utils
 
 
-class DeepQ(BaseDeepQ):
+class DeepQ(BaseAgent):
     def __init__(self, env, model, use_double=True, restore_from=None, device='/gpu:0',
-                 optimizer=None, saver_keep=3, name='DeepQ'):
+                 optimizer=None, policy=None, targetfreq=40000, additional_losses=set(),
+                 trajectory_batch=True, trainable_weights=None, target_net=None,
+                 target_weights=None, saver_keep=3, name='DeepQ'):
         """Constructs Deep Q-Learning agent.
          Includes the following implementations:
             1. Human-level control through deep reinforcement learning, Mnih et al., 2015.
@@ -35,171 +34,166 @@ class DeepQ(BaseDeepQ):
             use_double (bool): Enables Double DQN.
             restore_from (str): Path to the pre-trained model.
             device (str): TensorFlow device, used for graph creation.
-            optimizer (str or Optimizer): [Training-only] Agent's optimizer.
+            optimizer (str or Optimizer): Agent's optimizer.
                 By default: RMSProp(lr=2.5e-4, momentum=0.95).
-            saver_keep (int): [Training-only] Maximum number of checkpoints can be stored at once.
+            targetfreq (int): Target network update frequency(in seen observations).
+            additional_losses (set): Set of additional losses.
+            trainable_weights (list): List of trainable weights.
+                Network architecture must be exactly the same as provided for this agent.
+                If provided, current agent weights will remain constant.
+                Pass None, to optimize current agent network.
+            target_net (Network): Custom target network. Disables target sync.
+                Pass None, to use agent's target network.
+            saver_keep (int): Maximum number of checkpoints can be stored at once.
         """
         super(DeepQ, self).__init__(env=env, model=model, device=device,
                                     saver_keep=saver_keep, name=name)
-        self._use_double = use_double
-        self._last_log_time = time.time()
+        self.use_double = use_double
+        self._target_freq = targetfreq
+        self.policy = policy
+        self.trajectory_batch = trajectory_batch
         self._last_target_sync = self.step
+
+        if isinstance(self.env.action_space, Continuous):
+            raise ValueError('%s does not support environments with continuous '
+                             'action space.' % self.__class__.__name__)
+        if isinstance(self.env.action_space, Tuple):
+            raise ValueError('%s does not support environments with multiple '
+                             'action spaces.' % self.__class__.__name__)
+        self.target_net = target_net
+        self.target_weights = target_weights
+        if target_net is None:
+            with tf.variable_scope(self._scope + 'target_network') as scope:
+                self.target_net = self.model.build(input_space=self.env.observation_space,
+                                                   output_space=self.env.action_space)
+                self.target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                        scope.name)
+        self._target_update = [w.assign(self.weights[i])
+                               for i, w in enumerate(self.target_weights)]
+        if self.target_weights is None:
+            raise ValueError("Target network weights must be provided with target network.")
+        self.target_net['last_sync'] = self.step
 
         if optimizer is None:
             optimizer = RMSProp(0.00025, momentum=0.95, epsilon=0.01)
-
         with tf.device(self.device):
-            self._importance_ph = tf.placeholder('float32', [None], name='importance_sampling')
-            self._term_ph = tf.placeholder('float32', [None], name='term')
-            self._gamma_ph = tf.placeholder('float32', [], name='gamma')
-            with tf.variable_scope(self._scope + 'optimizer'):
-                if self._use_double:
-                    q_idx = tf.argmax(self.net['out'], 1)
-                    q_onehot = tf.one_hot(q_idx, self.env.action_space.shape[0], 1.0)
-                    q_next_max = tf.reduce_sum(self._target_net['out'] * q_onehot, 1)
-                else:
-                    q_next_max = tf.reduce_max(self._target_net['out'], 1)
+            self.importance = tf.placeholder('float32', [None], name='importance_sampling')
+            self.terms = tf.placeholder('bool', [None], name='term')
+            self.traj_ends = tf.placeholder('bool', [None], name='trajectory')
+            self.gamma = tf.placeholder('float32', [], name='gamma')
+            self.obs_next = tf.placeholder('float32',
+                                           shape=[None] + list(self.env.observation_space.shape),
+                                           name='obs_next')
 
-                # Loss:
-                q_next_masked = (1.0 - self._term_ph) * q_next_max
-                target = self._reward_ph + self._gamma_ph * q_next_masked
-                loss, self._td = losses.td_error_q(q_logits=self.net['out'],
-                                                   action=self._action_ph,
-                                                   target=tf.stop_gradient(target),
-                                                   weights=self._importance_ph,
-                                                   name='loss')
-                self.opt = Optimizer.create(optimizer)
-                self.opt.build(self.global_step)
-                self._train_op = self.opt.minimize(loss, self._weights)
-        tensor_utils.add_observation_summary(self.net['in'], self.env)
-        tf.summary.histogram('agent/action', self._action_ph)
-        tf.summary.histogram('agent/action_values', self.net['out'])
-        tf.summary.scalar('agent/learning_rate', self.opt.lr_ph)
+            with tf.variable_scope(self._scope + 'network', reuse=True):
+                self.ev_net = self.model.build_from_inputs(inputs=self.obs_next,
+                                                           output_space=self.env.action_space)
+
+            with tf.variable_scope(self._scope + 'optimizer'):
+                if self.use_double:
+                    q_idx = tf.argmax(self.ev_net['value'], 1)
+                    q_onehot = tf.one_hot(q_idx, self.env.action_space.shape[0], 1.0)
+                    q_next_max = tf.reduce_sum(self.target_net['value'] * q_onehot, 1)
+                else:
+                    q_next_max = tf.reduce_max(self.target_net['value'], 1)
+
+                self.q_next_max = q_next_max
+                with tf.variable_scope(self._scope + 'optimizer'):
+                    target = tensor_utils.discount_trajectory_op(self.rewards,
+                                                                 self.terms,
+                                                                 self.traj_ends,
+                                                                 self.gamma,
+                                                                 q_next_max)
+                    self.target = target
+
+                qloss = losses.QLoss(1.0, importance_sampling=self.importance)
+                compositor = losses.LossCompositor([qloss])
+                compositor.add(additional_losses)
+                loss = compositor.loss(endpoints=self.net,
+                                       action=self.actions,
+                                       reward=target,
+                                       term=self.terms)
+                self.opt = Optimizer.create(optimizer, self.global_step)
+                trainable_weights = self.weights if trainable_weights is None else trainable_weights
+
+                grads = self.opt.gradients(loss, self.weights)
+                self._train_op = {'value': self.net['value'],
+                                  'target': target,
+                                  'minimize': self.opt.apply_gradients(grads, trainable_weights)}
+
+        tensor_utils.add_observation_summary(self.net['input'], self.env)
+        tf.summary.histogram('agent/action', self.actions)
+        tf.summary.histogram('agent/action_values', self.net['value'])
+        tf.summary.scalar('agent/learning_rate', self.opt.lr)
         tf.summary.scalar('metrics/loss', loss)
         tf.summary.scalar('metrics/avg_Q', tf.reduce_mean(q_next_max))
         self._summary_op = tf.summary.merge_all()
-        self._savings |= set(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                               self._scope + 'optimizer'))
-        self._saver = tf.train.Saver(var_list=list(self._savings), max_to_keep=saver_keep)
-        self.sess.run(tf.global_variables_initializer())
+        self._saver = tf.train.Saver(max_to_keep=saver_keep)
+        tensor_utils.initialize_variables(self.sess)
         if restore_from and tf.train.latest_checkpoint(restore_from):
             self.load_weights(restore_from)
 
-    def train_on_batch(self, obs, actions, rewards, obs_next,
-                       term, lr, gamma=0.99, summarize=False, importance=None):
-        if importance is None:
-            importance = np.ones_like(rewards)
-        _, td_error, summary = self.sess.run([self._train_op, self._td,
-                                              self._summary_op if summarize else self._no_op],
-                                             feed_dict={
-                                                 self.net['in']: obs,
-                                                 self._action_ph: actions,
-                                                 self._reward_ph: rewards,
-                                                 self._target_net['in']: obs_next,
-                                                 self._term_ph: term,
-                                                 self._importance_ph: importance,
-                                                 self.opt.lr_ph: lr,
-                                                 self._gamma_ph: gamma
-                                             })
-        return td_error, summary
+    def predict_on_batch(self, obs_batch):
+        """Computes action-values for given batch of observations."""
+        return self.sess.run(self.net['value'], {self.net['input']: obs_batch})
 
-    def train(self, maxsteps, log_dir, log_freq, log_on_term=True, lr_schedule=None, gamma=0.99,
-              policy=None, target_freq=40000, update_freq=4, replay=None, render=False,
-              test_env=None, test_render=False, test_episodes=1, test_maxsteps=1000):
-        """Starts training.
+    def act(self, obs):
+        """Computes action with greedy policy for given observation."""
+        action_values = self.predict_on_batch([obs])
+        return GreedyPolicy.select_action(self.env, action_values)
+
+    def explore(self, obs, step=None):
+        action_values = self.predict_on_batch([obs])
+        step = self.step if step is None else step
+        return self.policy.select_action(self.env, action_values, step=step)
+
+    def load_weights(self, checkpoint):
+        super(DeepQ, self).load_weights(checkpoint)
+        self.target_update()
+
+    def target_predict(self, obs):
+        """Computes target network action-values with for given batch of observations."""
+        return self.sess.run(self.target_net['value'], {self.target_net['input']: obs})
+
+    def target_update(self):
+        """Syncs target network with behaviour network."""
+        self.sess.run(self._target_update)
+
+    def train_on_batch(self, obs, actions, rewards, term, obs_next, traj_ends,
+                       lr, gamma=0.99, summarize=False, importance=None):
+        """
 
         Args:
-            maxsteps (int): Total amount of seen observations.
-            log_dir (str): Path used for summary and checkpoints.
-            log_freq (int): Checkpoint and summary saving frequency (in seconds).
-            log_on_term (bool): Whether to log only after episode ends.
-            lr_schedule (core.Schedule): Learning rate scheduler.
+            obs:
+            actions:
+            rewards:
+            term:
+            obs_next:
+            traj_ends:
+            lr:
             gamma (float): Reward discount factor.
-            policy (core.BasePolicy): Agent's training policy.
-            target_freq (int): Target network update frequency(in seen observations).
-            update_freq (int) Optimizer update frequency (in seen observations).
-            replay (core.ExperienceReplay): Experience replay buffer.
-            render (bool): Enables game screen rendering.
-            test_env (gym.Env): Environment instance, used for testing.
-            test_render (bool): Enables rendering for test evaluations.
-            test_episodes (int): Number of test episodes. To disable test evaluation, pass 0.
-            test_maxsteps (int): Maximum step allowed during test per episode.
+            summarize:
+            importance:
+
+        Returns:
+
         """
-        try:
-            lr_schedule = Schedule.create(lr_schedule, self.opt.learning_rate, maxsteps)
-            replay = replay if replay else ProportionalReplay(50000, 32, 10000)
-            policy = policy if policy else EGreedyPolicy(1.0, 0.1, maxsteps / 50)
-
-            writer = tf.summary.FileWriter(log_dir, self.sess.graph)
-            stats = Stats(log_freq=log_freq, log_on_term=log_on_term, file_writer=writer,
-                          log_prefix='Train')
-            obs = self.env.reset()
-            # Play & Data Collection loop
-            while self.step < maxsteps:
-                if render:
-                    self.env.render()
-                action_values = self.predict_on_batch([obs])
-                action = policy.select_action(self.env, action_values, self.step)
-
-                obs_next, reward, term, info = self.env.step(action)
-                self.step += 1
-                self.episode += int(term)
-                stats.add(reward, term, info, step=self.step, episode=self.episode)
-                replay.add(obs, action, reward, obs_next, term)
-                obs = obs_next
-                if term:
-                    obs = self.env.reset()
-
-                # Train from experience replay, if ready
-                self.train_from_replay(log_dir=log_dir,
-                                       log_freq=log_freq,
-                                       lr=lr_schedule.value(self.step),
-                                       gamma=gamma,
-                                       target_freq=target_freq,
-                                       update_freq=update_freq,
-                                       replay=replay,
-                                       test_env=test_env,
-                                       test_episodes=test_episodes,
-                                       test_render=test_render,
-                                       test_maxsteps=test_maxsteps,
-                                       writer=writer)
-            logger.info('Performing final evaluation.')
-            self.test(test_env, test_episodes, max_steps=test_maxsteps, render=test_render)
-            writer.close()
-            logger.info('Training finished.')
-        except KeyboardInterrupt:
-            logger.info('Stopping training process...')
-        self.save_weights(log_dir)
-
-    def train_from_replay(self, log_dir, log_freq, lr, gamma, target_freq, update_freq, replay,
-                          test_env, test_episodes, test_render, test_maxsteps, writer):
-        if not replay.is_ready:
-            return
-
-        if self.step % update_freq != 0:
-            return 
-
-        b_obs, b_action, b_reward, b_obs_next, b_term, b_idxs, b_is = replay.sample()
-        summarize = time.time() - self._last_log_time > log_freq
-        td_error, summary_str = self.train_on_batch(b_obs, b_action, b_reward, b_obs_next,
-                                                    b_term,
-                                                    lr=lr,
-                                                    gamma=gamma,
-                                                    summarize=summarize,
-                                                    importance=b_is)
-
-        if isinstance(replay, ProportionalReplay):
-            replay.update(b_idxs, np.abs(td_error))
-
-        if self.step - self._last_target_sync > target_freq:
-            self._last_target_sync = self.step
+        if self.step - self.target_net['last_sync'] > self._target_freq:
+            self.target_net['last_sync'] = self.step
             self.target_update()
 
-        if summarize:
-            self.save_weights(log_dir)
-            self._last_log_time = time.time()
-            self.test(test_env, test_episodes, max_steps=test_maxsteps, render=test_render)
-            if log_dir and summary_str:
-                writer.add_summary(summary_str, global_step=self.step)
-                writer.flush()
+        if importance is None:
+            importance = np.ones_like(rewards)
 
+        self._train_op['summary'] = self._summary_op if summarize else self._no_op
+        return self.sess.run(self._train_op, {self.net['input']: obs,
+                                              self.actions: actions,
+                                              self.rewards: rewards,
+                                              self.terms: term,
+                                              self.target_net['input']: obs_next,
+                                              self.obs_next: obs_next,
+                                              self.traj_ends: traj_ends,
+                                              self.importance: importance,
+                                              self.opt.lr_ph: lr,
+                                              self.gamma: gamma
+                                              })

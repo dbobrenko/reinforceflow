@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+
 import gym
 import numpy as np
 import six
@@ -10,7 +11,7 @@ from gym import spaces
 
 import reinforceflow as rf
 from reinforceflow.core.space import DiscreteOneHot, Tuple, Continuous
-from reinforceflow.utils import image_preprocess, one_hot
+from reinforceflow.utils import image_preprocess, onehot
 
 
 def copyable(cls):
@@ -88,12 +89,12 @@ class Vectorize(gym.Wrapper):
         # TODO: add spaces.MultiDiscrete support.
         if isinstance(space, spaces.Discrete):
             def converter(sample):
-                return one_hot(space.n, sample)
+                return onehot(sample, space.n)
             return converter
 
         if isinstance(space, spaces.MultiBinary):
             def converter(sample):
-                return tuple([one_hot(2, s) for s in sample])
+                return tuple([onehot(s, 2) for s in sample])
             return converter
 
         if isinstance(space, spaces.Box):
@@ -250,8 +251,7 @@ class ObservationStackWrap(gym.Wrapper):
 
     def _reset(self):
         self._last_obs = self.env.reset()
-        self.reset_stack()
-        return self._obs_stack
+        return self.reset_stack()
 
     def _step(self, action):
         self._last_obs, reward, done, info = self.env.step(action)
@@ -260,6 +260,7 @@ class ObservationStackWrap(gym.Wrapper):
 
     def reset_stack(self):
         self._obs_stack = self.stack_observations(self._last_obs, self.stack_len)
+        return self._obs_stack
 
     @staticmethod
     def stack_observations(obs, stack_len, obs_stack=None):
@@ -333,5 +334,5 @@ class RewardClipWrap(gym.Wrapper):
     def _step(self, action):
         """Clips reward into {-1, 0, 1} range, as suggested in Mnih et al., 2013."""
         obs, reward, done, info = self.env.step(action)
-        info['reward_unclip'] = reward
+        info['reward_raw'] = reward
         return obs, np.sign(reward), done, info

@@ -17,7 +17,7 @@ from six.moves import range  # pylint: disable=redefined-builtin
 from reinforceflow import logger
 from reinforceflow.core.policy import GreedyPolicy
 from reinforceflow.core.space import Tuple, Continuous
-from reinforceflow.core.stats import Stats
+from reinforceflow.core.stats import Stats, flush_stats
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -62,58 +62,60 @@ class BaseAgent(object):
         with tf.device(self.device):
             # Inference Graph
             with tf.variable_scope(self._scope + 'network') as scope:
-                self._action_ph = tf.placeholder('float32',
-                                                 [None] + list(self.env.action_space.shape),
-                                                 name='action')
-                self._reward_ph = tf.placeholder('float32', [None], name='reward')
+                self.actions = tf.placeholder('float32',
+                                              [None] + list(self.env.action_space.shape),
+                                              name='action')
+                self.rewards = tf.placeholder('float32', [None], name='reward')
                 self.net = self.model.build(input_space=self.env.observation_space,
                                             output_space=self.env.action_space)
-                self._weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope.name)
+                self.weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope.name)
         # Train Part
         with tf.variable_scope(self._scope + 'optimizer'):
             self._no_op = tf.no_op()
             self.global_step = tf.Variable(0, trainable=False, name='global_step')
             self._ep_counter = tf.Variable(0, trainable=False, name='ep_counter')
             self._obs_counter = tf.Variable(0, trainable=False, name='obs_counter')
-        self._savings = set(tf.get_collection(tf.GraphKeys.SUMMARIES))
-        self._savings |= set(self._weights)
+        self._savings = set(self.weights)
         self._savings.add(self.global_step)
         self._savings.add(self._obs_counter)
         self._savings.add(self._ep_counter)
-        self._mutex = threading.Lock()
-        self._saver = None
+        self.lock = threading.Lock()
+        self._saver = tf.train.Saver(self._savings)
+        self.test_env = None
 
-    def train(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def train_on_batch(self, obs, actions, rewards, obs_next, term, lr,  summarize=False):
+    def train_on_batch(self, obs, actions, rewards, obs_next, trajectory_ends,
+                       term, lr, gamma=0.99, summarize=False):
         raise NotImplementedError
 
     def predict_on_batch(self, obs_batch):
-        """Computes action-values for given batch of observations."""
-        return self.sess.run(self.net['out'], {self.net['in']: obs_batch})
+        raise NotImplementedError
 
-    def predict_action(self, obs, policy=None, step=0):
-        """Computes action for given observation.
+    def act(self, obs):
+        """Computes greedy action for given observation.
         Args:
             obs (numpy.ndarray): Observation.
-            policy (core.Policy): Policy, used for discrete action space agents.
-                By default Greedy-policy is used.
-            step (int): Observation counter, used for non-greedy policies.
         Returns:
-            Raw network output, if environment action space is continuous.
-            Action chosen by policy, if environment action space is discrete.
+            Action.
         """
-        action_values = self.predict_on_batch([obs])[0]
-        if isinstance(self.env.action_space, Continuous):
-            return action_values
-        if policy is None:
-            policy = GreedyPolicy
-        return policy.select_action(self.env, action_values, step)
+        raise NotImplementedError
+
+    def explore(self, obs, step=None):
+        """Computes action in exploration mode for given observation.
+        Args:
+            obs (numpy.ndarray): Observation.
+            step (int): Current agent step. To use current step, pass None.
+        Returns:
+            Action.
+        """
+        raise NotImplementedError
 
     @property
     def name(self):
         return self._scope[:-1]
+
+    @property
+    def optimize_counter(self):
+        return self.sess.run(self.opt.global_step)
 
     def save_weights(self, path, model_name='model.ckpt'):
         if not os.path.exists(path):
@@ -133,7 +135,7 @@ class BaseAgent(object):
         self.episode = self.sess.run(self._ep_counter)
         logger.info('Checkpoint has been restored from: %s' % checkpoint)
 
-    def test(self, env, episodes, max_steps=int(1e5), render=False, max_fps=None, writer=None):
+    def test(self, env, episodes, max_steps=1e5, render=False, max_fps=None, writer=None):
         """Tests agent's performance on a given number of episodes.
 
         Args:
@@ -146,27 +148,32 @@ class BaseAgent(object):
 
         Returns (utils.RewardStats): Average reward per episode.
         """
-        if env is None:
+        if env is not None:
+            self.test_env = env
+        elif self.test_env is None:
             logger.warn("Testing environment is not provided. Using training env as testing.")
-            env = copy.deepcopy(self.env)
-        stats = Stats(log_freq=None, log_on_term=False, log_prefix='Test', file_writer=writer,
-                      log_performance=False)
+            self.test_env = copy.deepcopy(self.env)
+        stats = Stats(agent=self)
         delta_frame = 1. / max_fps if max_fps else 0
         step_counter = 0
         episode_counter = 0
+        max_steps = int(max_steps)
         for _ in range(episodes):
-            obs = env.reset()
+            obs = self.test_env.reset()
             for i in range(max_steps):
                 start_time = time.time()
-                action = self.predict_action(obs)
-                obs, r, terminal, info = env.step(action)
-                terminal = terminal or i >= max_steps - 1
+                action = self.act(obs)
+                obs, r, terminal, info = self.test_env.step(action)
+                step_limit = i >= max_steps - 1
+                terminal = terminal or step_limit
+                if step_limit:
+                    logger.info("Interrupting test episode due to the "
+                                "maximum allowed number of steps (%d)" % i)
                 step_counter += 1
                 episode_counter += terminal
-                stats.add(r, terminal, info, step=step_counter, episode=episode_counter)
-                stats.add(r, terminal, info, step=step_counter, episode=episode_counter)
+                stats.add(action, r, terminal, info)
                 if render:
-                    env.render()
+                    self.test_env.render()
                     if delta_frame > 0:
                         delay = max(0, delta_frame - (time.time() - start_time))
                         time.sleep(delay)
@@ -174,15 +181,15 @@ class BaseAgent(object):
                     # TODO: Check for atari life lost
                     break
         reward_stats = copy.deepcopy(stats.reward_stats)
-        stats.flush(step=self.step, episode=self.episode)
-        env.close()
+        flush_stats(stats, log_progress=False, log_performance=False, log_hyperparams=False,
+                    name='%s Test' % self.name, writer=writer)
         return reward_stats
 
     def async_test(self, env, num_episodes, render, max_steps=int(1e4)):
         if num_episodes <= 0:
             return
 
-        with self._mutex:
+        with self.lock:
             def evaluate():
                 self.test(env=env, episodes=num_episodes, render=render, max_steps=max_steps)
             t = Thread(target=evaluate)
@@ -202,58 +209,3 @@ class BaseAgent(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-
-
-@six.add_metaclass(abc.ABCMeta)
-class BaseDiscreteAgent(BaseAgent):
-    """Base class for agents with discrete action space.
-    See `BaseAgent`.
-    """
-    @abc.abstractmethod
-    def __init__(self, env, model, device='/gpu:0', name='', **kwargs):
-        super(BaseDiscreteAgent, self).__init__(env, model, device=device, name=name, **kwargs)
-        if isinstance(self.env.action_space, Continuous):
-            raise ValueError('%s does not support environments with continuous '
-                             'action space.' % self.__class__.__name__)
-        if isinstance(self.env.action_space, Tuple):
-            raise ValueError('%s does not support environments with multiple '
-                             'action spaces.' % self.__class__.__name__)
-
-    def predict_action(self, obs, policy=GreedyPolicy, step=0):
-        """Computes action with given policy for given observation.
-        See `Agent.predict_action`."""
-        action_values = self.predict_on_batch([obs])
-        return policy.select_action(self.env, action_values, step=step)
-
-
-@six.add_metaclass(abc.ABCMeta)
-class BaseDeepQ(BaseDiscreteAgent):
-    """Base class for DQN-family agents with discrete action space.
-    See `BaseDiscreteAgent`.
-
-    Inherited fields:
-        _target_net (models.AbstractFactory): Target network.
-        _target_update (operation): TensorFlow Operation for target network update.
-    """
-    @abc.abstractmethod
-    def __init__(self, env, model, device='/gpu:0', name='', **kwargs):
-        super(BaseDeepQ, self).__init__(env, model, device=device, name=name, **kwargs)
-        with tf.variable_scope(self._scope + 'target_network') as scope:
-            self._target_net = self.model.build(input_space=self.env.observation_space,
-                                                output_space=self.env.action_space)
-            target_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                               scope.name)
-            self._target_update = [target_weights[i].assign(self._weights[i])
-                                   for i in range(len(target_weights))]
-
-    def load_weights(self, checkpoint):
-        super(BaseDeepQ, self).load_weights(checkpoint)
-        self.target_update()
-
-    def target_predict(self, obs):
-        """Computes target network action-values with for given batch of observations."""
-        return self.sess.run(self._target_net['out'], {self._target_net['in']: obs})
-
-    def target_update(self):
-        """Updates target network."""
-        self.sess.run(self._target_update)

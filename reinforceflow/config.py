@@ -1,12 +1,14 @@
 import logging
 import random
 import sys
+import os
 
 import numpy as np
 import tensorflow as tf
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-version = '0.2.4'
+version = '0.2.9'
 __RANDOM_SEED__ = None
 
 
@@ -28,7 +30,7 @@ def get_random_seed():
 
 
 _handler = logging.StreamHandler(sys.stdout)
-_formatter = logging.Formatter('[%(asctime)s %(levelname)s] %(message)s')
+_formatter = logging.Formatter('[%(asctime)s %(levelname)s] %(message)s', '%d.%m.%y %H:%M:%S')
 _handler.setFormatter(_formatter)
 logger = logging.getLogger('.'.join(__name__.split('.')))
 logger.propagate = False

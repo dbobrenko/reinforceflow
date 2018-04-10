@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+from six.moves import range
 from operator import itemgetter
 import random
 import numpy as np
@@ -40,7 +41,7 @@ class ExperienceReplay(object):
     def _cycle_idx(self, idx):
         return idx % self._capacity
 
-    def add(self, obs, action, reward, obs_next, term):
+    def add(self, obs, action, reward, term, obs_next):
         self._actions[self._idx] = action
         self._rewards[self._idx] = reward
         self._terms[self._idx] = term
@@ -56,10 +57,18 @@ class ExperienceReplay(object):
         return (gather(self._obs),
                 gather(self._actions),
                 gather(self._rewards),
-                next_obs_gather(self._obs),
                 gather(self._terms),
+                next_obs_gather(self._obs),
+                np.ones_like(rand_idxs, 'bool'),
                 rand_idxs,
                 [1.0] * len(rand_idxs))
+        # traj = TrajectoryBatch(obses=gather(self._obs),
+        #                        actions=gather(self._actions),
+        #                        rewards=gather(self._rewards),
+        #                        terms=gather(self._terms),
+        #                        next_obses=next_obs_gather(self._obs),
+        #                        ends=np.ones_like(rand_idxs, 'bool'))
+        # return traj
 
     @property
     def size(self):
@@ -103,10 +112,10 @@ class ProportionalReplay(ExperienceReplay):
     def _preproc_priority(self, error):
         return (error + self._epsilon) ** self._alpha
 
-    def add(self, obs, action, reward, obs_next, term, priority=None):
+    def add(self, obs, action, reward, term, obs_next, priority=None):
         if priority is None:
             priority = self._max_priority
-        super(ProportionalReplay, self).add(obs, action, reward, obs_next, term)
+        super(ProportionalReplay, self).add(obs, action, reward, term, obs_next)
         self.sumtree.append(self._preproc_priority(priority))
         self.mintree.append(self._preproc_priority(priority))
 
@@ -124,10 +133,18 @@ class ProportionalReplay(ExperienceReplay):
         return (gather(self._obs),
                 gather(self._actions),
                 gather(self._rewards),
-                next_obs_gather(self._obs),
                 gather(self._terms),
+                next_obs_gather(self._obs),
+                np.ones_like(idxs, 'bool'),
                 idxs,
                 importances)
+        # traj = TrajectoryBatch(obses=gather(self._obs),
+        #                        actions=gather(self._actions),
+        #                        rewards=gather(self._rewards),
+        #                        terms=gather(self._terms),
+        #                        next_obses=next_obs_gather(self._obs),
+        #                        ends=np.ones_like(idxs, 'bool'))
+        # return traj, idxs, importances
 
     def _compute_importance(self, indexes, beta):
         importances = [0.0] * len(indexes)

@@ -2,182 +2,158 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import threading
 import time
 
 import numpy as np
 import tensorflow as tf
+from termcolor import colored
 
 from reinforceflow import logger
 
 
-class ThreadStats(object):
-    def __init__(self, thread_stats, log_prefix='', file_writer=None,
-                 initial_step=0, log_on_term=True):
-        self.thread_stats = thread_stats
-        self.writer = file_writer
-        self.log_prefix = log_prefix
-        self._scope = self.log_prefix + '/' if self.log_prefix else ''
-        self.last_step = initial_step
-        self.last_time = time.time()
-        self.log_on_term = log_on_term
+def _make_row(*column_messages, **kwargs):
+    """Makes a formatted string.
 
-    def _reset_average(self):
-        thread_step_av = []
-        thread_episode_av = []
-        for t in self.thread_stats:
-            thread_step, thread_ep = t.reward_stats.reset()
-            thread_step_av.append(thread_step)
-            thread_episode_av.append(thread_ep)
-        step_av = float(np.mean(thread_step_av))
-        episode_av = float(np.mean(thread_episode_av))
-        episode_max = float(np.max(thread_episode_av))
-        return step_av, episode_av, episode_max
+    Args:
+        *column_messages (str): Messages.
+        **kwargs:
 
-    def _prepare_episode_reward(self, step):
-        # If some of the threads have no completed episodes yet.
-        if not np.all([t.reward_stats.episode > 0 for t in self.thread_stats]):
-            episode_av = 'Not Ready'
-            episode_max = 'Not Ready'
-        else:
-            thread_step_av = [t.reward_stats.episode_average() for t in self.thread_stats]
-            episode_av = float(np.mean(thread_step_av))
-            episode_max = float(np.max(thread_step_av))
+    Returns:
 
-            if self.writer:
-                value = tf.Summary.Value
-                tf_logs = [value(tag=self._scope+'av_ep_R', simple_value=episode_av),
-                           value(tag=self._scope+'max_ep_R', simple_value=episode_max)]
-                self.writer.add_summary(tf.Summary(value=tf_logs), global_step=step)
-            episode_av = "%0.2f" % episode_av
-            episode_max = "%0.2f" % episode_max
-            [t.reward_stats.reset_episode_rewards() for t in self.thread_stats]
-        return "Episode R Average: %s (Max Thread: %s). " % (episode_av, episode_max)
+    """
+    color = kwargs.get("color", None)
+    col_size = kwargs.get("column_size", 40)
+    message = ""
+    for m in column_messages:
+        if m is not None:
+            message += str("\t\t%-" + str(col_size) + "s ") % str(m)
+    return colored(message, color=color)
 
-    def flush(self, step, episode):
-        step_av = float(np.mean([t.reward_stats.step_average() for t in self.thread_stats]))
-        log = "%s " % self.log_prefix if self.log_prefix else ''
-        log += self._prepare_episode_reward(step)
-        log += "Av.Step R: %.4f. " % step_av
-        log += "Obs: %s. Ep: %s. " % (step, episode)
 
-        obs_per_sec = (step - self.last_step) / (time.time() - self.last_time)
-        log += "Observation/sec: %0.2f." % obs_per_sec
-        self.last_step = step
-        if self.writer:
-            value = tf.Summary.Value
-            tf_logs = [value(tag=self._scope+'total_ep', simple_value=episode),
-                       value(tag=self._scope+'obs_per_sec', simple_value=obs_per_sec),
-                       value(tag=self._scope+'av_step_R', simple_value=step_av)]
-            self.writer.add_summary(tf.Summary(value=tf_logs), global_step=step)
-            self.writer.flush()
+def _log_rows(*rows):
+    table = ""
+    for r in rows:
+        if r is not None:
+            table += "%s\n" % r
+    logger.info(table)
 
-        logger.info(log)
-        self.last_time = time.time()
-        [t.reward_stats.reset_step_rewards() for t in self.thread_stats]
+
+def flush_stats(stats, name, log_progress=True, log_rewards=True, log_performance=True,
+                log_hyperparams=True, maxsteps=None, writer=None):
+    name = stats.agent.name if name is None else name
+    if isinstance(stats, Stats):
+        stats = [stats]
+    stat = stats[0]
+    delta_time = time.time() - stat.last_time
+    optim_per_sec = (stat.agent.optimize_counter - stat.last_optimize) / delta_time
+    steps = stat.agent.step
+    episodes = stat.agent.episode
+    obs_per_sec = (stat.agent.step - stat.last_step) / delta_time
+    reward_step = 0
+    lr = 0
+    episode_rewards = []
+    exploration = 0
+    for stat in stats:
+        reward_step += stat.reward_stats.reset_step_rewards()
+        if stat.reward_stats.episode > 0:
+            episode_rewards.append(stat.reward_stats.reset_episode_rewards())
+        # exploration += stat.agent.gamma
+        # lr += stat.lr
+        stat.last_time = time.time()
+        stat.last_step = stat.agent.step
+        stat.last_optimize = stat.agent.optimize_counter
+
+    reward_step /= len(stats)
+    reward_ep = float(np.mean(episode_rewards or 0))
+    exploration /= len(stats)
+    lr /= len(stats)
+
+    percent = "(%.2f%%)" % (100 * (steps / maxsteps)) if maxsteps is not None else ""
+    _log_rows(colored(name, color='green', attrs=['bold']),
+              _make_row('%-20s %d %s' % ('Steps', steps, percent),
+                        '%-20s %d' % ('Episodes', episodes),
+                        color='blue') if log_progress else None,
+
+              _make_row('%-20s %.4f' % ('Reward/Step', reward_step),
+                        '%-20s %.2f' % ('Reward/Episode', reward_ep) if reward_ep else None,
+                        color='blue') if log_rewards else None,
+
+              _make_row('%-20s %.2f' % ('Observation/Sec', obs_per_sec),
+                        '%-20s %.2f' % ('Optimization/Sec', optim_per_sec),
+                        color='cyan') if log_performance else None,
+
+              # _make_row('%-20s %.2f' % ('Exploration Rate', exploration),
+              #           '%-20s %.2e' % ('Learning Rate', lr),
+              #           ) if log_hyperparams else None
+              )
+
+    if writer is not None:
+        # TODO
+        v = tf.Summary.Value
+        logs = [v(tag=name+'/TotalEpisodes', simple_value=episodes),
+                v(tag=name+'/ObsPerSec', simple_value=obs_per_sec),
+                v(tag=name+'/OptimizePerSec', simple_value=optim_per_sec),
+                v(tag=name+'/RewardPerStep', simple_value=reward_step)]
+        if reward_ep > 0:
+            logs.append(v(tag=name+'/RewardPerEpisode', simple_value=reward_ep))
+        writer.add_summary(tf.Summary(value=logs), global_step=steps)
 
 
 class Stats(object):
-    def __init__(self, log_freq=600, file_writer=None, log_on_term=True, log_performance=True,
-                 log_prefix=''):
-        """Stats Logger wrapper. Used to log Average Episode Reward, Average Step Reward,
-            observation/second, etc.
+    def __init__(self, agent):
+        """Statistics recorder.
 
         Args:
-            log_freq (int or None): Logging frequency, in seconds.
-                To disable auto-logging, pass None.
-            file_writer: Optionally, TensorFlow summary writer. To disable, pass None.
-            log_on_term (bool): Whether to log only after terminal states.
+            tensorboard (bool): If enabled, performs tensorboard logging.
+            episodic (bool): Whether environment is episodic.
             log_performance (bool): Whether to log performance (obs/sec).
-            log_prefix (str): Agent's name. Used for scoping.
+            name (str): Statistics name.
         """
-        self.log_prefix = log_prefix
-        self.log_freq = log_freq
-        self.log_on_term = log_on_term
-        self.log_performance = log_performance
-        self.last_step = 0
+        self.agent = agent
         self.last_time = time.time()
         self.reward_stats = RewardStats()
-        self.writer = file_writer
-        self._scope = self.log_prefix + '/' if self.log_prefix else ''
-        self._lock = threading.Lock()
+        self.action_distr = {}
+        self.last_step = self.agent.step
+        self.last_optimize = self.agent.optimize_counter
 
-    def add(self, reward, done, info, step, episode):
+    def add(self, actions, rewards, terms, infos):
         """Adds statistics. Expected to be called after each `gym.Env.step`.
-        Logs every `log_freq` second, if it's enabled.
 
         Args:
-            reward (float): Reward after performed action.
-            done (bool): Whether current step was terminal.
-            info (dict): Info returned by environment.
-            step (int): Current step.
-            episode (int): Current episode.
+            rewards (list): List of rewards after performed action.
+            terms (list): List of terminal states.
+            infos (list): List of info returned by environment.
         """
-        with self._lock:
-            reward = info.get('reward_unclip', reward)
-            self.reward_stats.add(reward, done)
-            if self.log_freq is None:
-                return
-            if time.time() - self.last_time < self.log_freq:
-                return
-            if self.log_on_term and not done:
-                return
-            self.flush(step, episode)
+        # rewards = [info.get('reward_raw', reward) for reward, info in zip(rewards, infos)]
+        self.reward_stats.add(rewards, terms)
 
-    def flush(self, step, episode):
-        log = "%s " % self.log_prefix if self.log_prefix else ''
-
-        episode_av = self.reward_stats.episode_average()
-        episode_av = "%.2f" % episode_av if self.reward_stats.episode > 0 else "Not Ready"
-        log += "Av.Episode R: %s. " % episode_av
-
-        step_av = self.reward_stats.step_average()
-        log += "Av.Step R: %.4f. " % step_av
-
-        log += "Obs: %s. Ep: %s. " % (step, episode)
-        obs_per_sec = (step - self.last_step) / (time.time() - self.last_time)
-
-        if self.log_performance:
-            log += "Observation/sec: %0.2f." % obs_per_sec
-
-        if self.writer:
-            value = tf.Summary.Value
-            tf_logs = [value(tag=self._scope+'total_ep', simple_value=episode),
-                       value(tag=self._scope+'obs_per_sec', simple_value=obs_per_sec),
-                       value(tag=self._scope+'av_step_R', simple_value=step_av)]
-            if self.reward_stats.episode > 0:
-                tf_logs += [value(tag=self._scope+'av_ep_R', simple_value=float(episode_av))]
-            self.writer.add_summary(tf.Summary(value=tf_logs), global_step=step)
-            self.writer.flush()
-
-        logger.info(log)
-        self.last_step = step
-        self.last_time = time.time()
-        self.reward_stats.reset()
+    def flush(self, name=None):
+        flush_stats(self, name)
 
 
 class RewardStats(object):
     """Keeps agent's step and episode reward statistics."""
     def __init__(self):
         self.episode_sum = 0.0
+        self.step_sum = 0.0
+        self._running_ep_r = 0.0
         self.step = 0
         self.episode = 0
         self.episode_min = float('+inf')
         self.episode_max = float('-inf')
-        self._running_r = 0.0
-        self._running_ep_r = 0.0
 
     def add(self, reward, terminal):
         """Adds reward and terminal state (end of episode).
         Args:
-            reward (float): Reward.
-            terminal (bool): Whether the episode was ended.
+            reward (float, np.ndarray or list): Reward.
+            terminal (bool, np.ndarray or list): Whether the episode was ended.
         """
         self.step += 1
-        self._running_r += reward
-        self._running_ep_r += reward
+        # TODO check for batches and single
+        self.step_sum += np.sum(reward)
+        self._running_ep_r += np.sum(reward)
         # Episode rewards book keeping
-        if terminal:
+        if np.any(terminal):
             self.episode_sum += self._running_ep_r
             if self._running_ep_r < self.episode_min:
                 self.episode_min = self._running_ep_r
@@ -196,7 +172,7 @@ class RewardStats(object):
         if not np.any(terminal_batch):
             sum_batch = np.sum(reward_batch)
             self.step += len(reward_batch)
-            self._running_r += sum_batch
+            self.step_sum += sum_batch
             self._running_ep_r += sum_batch
             return
         # If batch contains terminal state, add by element
@@ -205,7 +181,7 @@ class RewardStats(object):
 
     def step_average(self):
         """Computes average reward per step."""
-        return self._running_r / (self.step or 1)
+        return self.step_sum / (self.step or 1)
 
     def episode_average(self):
         """Computes average reward per episode."""
@@ -216,7 +192,7 @@ class RewardStats(object):
         Returns: Average reward per step.
         """
         step = self.step_average()
-        self._running_r = 0.0
+        self.step_sum = 0.0
         self.step = 0
         return step
 

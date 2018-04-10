@@ -24,34 +24,32 @@ class DiscreteOneHot(Space, _spaces.Discrete):
     def __init__(self, n):
         n = np.asscalar(np.asarray(n))
         super(DiscreteOneHot, self).__init__(n)
+        self.shape = tuple([n])
 
     def sample(self):
         """Returns random one-hot encoded value from current space."""
         value = super(DiscreteOneHot, self).sample()
-        return utils.one_hot(self.n, value)
+        return utils.onehot(value, self.n)
 
     def contains(self, x):
         if not isinstance(x, (tuple, list, np.generic, np.ndarray)):
             return False
         return np.shape(x) == self.shape and np.sum(x) == 1 and np.max(x) == 1
 
-    @property
-    def shape(self):
-        return tuple([self.n])
-
     def reshape(self, n):
-        self.n = np.asscalar(np.asarray(n))
+        self.shape = np.asscalar(np.asarray(n))
 
 
 class Continuous(Space, _spaces.Box):
-    def __init__(self, low, high, shape=None):
-        super(Continuous, self).__init__(low, high, shape)
+    def __init__(self, low, high, shape=None, dtype=None):
+        super(Continuous, self).__init__(low, high, shape, dtype=dtype)
 
     def reshape(self, new_shape):
         low_value = np.min(self.low)
         high_value = np.min(self.high)
         self.low = low_value + np.zeros(new_shape)
         self.high = high_value + np.zeros(new_shape)
+        self.shape = self.low.shape
 
 
 class Tuple(Space, _spaces.Tuple):

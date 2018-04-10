@@ -15,18 +15,19 @@ class Optimizer(object):
         self._grad_clip = gradient_clip
         self._opt_class = None
         self.global_step = None
-        self.learning_rate = learning_rate
+        self.lr = learning_rate
         self.lr_ph = tf.placeholder_with_default(learning_rate, shape=[])
         self._kwargs = {'learning_rate': learning_rate}
+        self.built = False
 
     @classmethod
-    def create(cls, optimizer, learning_rate=7e-4, gradient_clip=40.0):
-        """Initializes optimizer.
-        After initialization, consider calling 'build' method.
+    def create(cls, optimizer, global_step, learning_rate=7e-4, gradient_clip=40.0):
+        """Initializes and builds optimizer.
 
         Args:
             optimizer (core.Optimizer or str): Optimizer object or name. Valid names:
                 'adam', 'rms', 'sgd', 'momentum', 'adadelta'.
+            global_step (Tensor): Optimizer update step.
             learning_rate (float): Learning rate.
             gradient_clip (float): Gradient norm clipping.
 
@@ -34,13 +35,13 @@ class Optimizer(object):
             Optimizer instance.
         """
         if isinstance(optimizer, Optimizer):
-            return optimizer
+            cls.optimizer = optimizer
 
         # Create optimizer from callable object
-        if callable(optimizer):
-            return CustomOptimizer(optimizer,
-                                   learning_rate=learning_rate,
-                                   gradient_clip=gradient_clip)
+        elif callable(optimizer):
+            cls.optimizer = CustomOptimizer(optimizer,
+                                            learning_rate=learning_rate,
+                                            gradient_clip=gradient_clip)
 
         # Create optimizer from string
         elif isinstance(optimizer, six.string_types):
@@ -49,13 +50,15 @@ class Optimizer(object):
             o = optimizer.lower()
             if o not in OPTIMIZER_MAP:
                 raise ValueError("Unknown optimizer %s. Valid: %s." % (o, ', '.join(OPTIMIZER_MAP)))
-            return OPTIMIZER_MAP[o](optimizer,
-                                    learning_rate=learning_rate,
-                                    gradient_clip=gradient_clip)
+            cls.optimizer = OPTIMIZER_MAP[o](optimizer,
+                                             learning_rate=learning_rate,
+                                             gradient_clip=gradient_clip)
         else:
             raise ValueError("Unknown optimizer %s. Should be either an optimizer instance, "
                              "a name string, or a subclass of TensorFlow Optimizer."
                              % str(optimizer))
+        cls.optimizer.build(global_step)
+        return cls.optimizer
 
     def build(self, global_step):
         """Builds optimizer train graph.
@@ -67,6 +70,9 @@ class Optimizer(object):
         Returns (Operation):
             Train operation.
         """
+        if self.built:
+            return self.optimizer
+        self.built = True
         self.global_step = global_step
         self.optimizer = self._opt_class(**self._kwargs)
         return self.optimizer

@@ -6,7 +6,7 @@ import random
 
 import numpy as np
 
-from reinforceflow.utils import one_hot
+from reinforceflow.utils import onehot
 
 
 class BasePolicy(object):
@@ -17,7 +17,7 @@ class BasePolicy(object):
 class GreedyPolicy(BasePolicy):
     @classmethod
     def select_action(cls, env, prediction, *args, **kwargs):
-        return one_hot(env.action_space.shape, np.argmax(prediction))
+        return onehot(np.argmax(prediction), env.action_space.shape)
 
 
 class EGreedyPolicy(BasePolicy):
@@ -32,7 +32,7 @@ class EGreedyPolicy(BasePolicy):
     def select_action(self, env, prediction, step):
         self.epsilon = self._update_epsilon(step)
         if random.random() > self.epsilon:
-            return one_hot(env.action_space.shape, np.argmax(prediction))
+            return onehot(np.argmax(prediction), env.action_space.shape)
         else:
             return env.action_space.sample()
 
