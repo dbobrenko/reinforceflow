@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from os.path import expanduser
 try:
     import reinforceflow
 except ImportError:
@@ -11,7 +10,6 @@ except ImportError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
     import reinforceflow
 from reinforceflow.agents import ActorCritic
-from reinforceflow.core.policy import EGreedyPolicy
 from reinforceflow.models import ActorCriticConv
 from reinforceflow.core.optimizer import RMSProp
 from reinforceflow.envs import AtariWrapper

@@ -14,8 +14,8 @@ install_requires = [
 ]
 
 extras_require = {
-    'tf': ['tensorflow>=1.0.1'],
-    'tf-gpu': ['tensorflow-gpu>=1.0.1'],
+    'tf': ['tensorflow>=1.6.0'],
+    'tf-gpu': ['tensorflow-gpu>=1.6.0'],
     'universe': ['universe>=0.21.3']
 }
 

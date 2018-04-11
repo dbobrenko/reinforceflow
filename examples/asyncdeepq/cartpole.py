@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from reinforceflow.trainers.async_trainer import AsyncTrainer
 
 try:
     import reinforceflow
@@ -16,6 +15,7 @@ from reinforceflow.envs.wrapper import Vectorize
 from reinforceflow.core.policy import EGreedyPolicy
 from reinforceflow.models import FullyConnected
 from reinforceflow.core.optimizer import Adam
+from reinforceflow.trainers.async_trainer import AsyncTrainer
 reinforceflow.set_random_seed(555)
 
 

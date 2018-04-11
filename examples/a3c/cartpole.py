@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from reinforceflow.trainers.async_trainer import AsyncTrainer
 
 try:
     import reinforceflow
@@ -13,9 +12,9 @@ except ImportError:
     import reinforceflow
 from reinforceflow.agents import ActorCritic
 from reinforceflow.envs.wrapper import Vectorize
-from reinforceflow.core.policy import EGreedyPolicy
-from reinforceflow.models import FullyConnected, ActorCriticFC
-from reinforceflow.core.optimizer import Adam, RMSProp
+from reinforceflow.models import ActorCriticFC
+from reinforceflow.core.optimizer import RMSProp
+from reinforceflow.trainers.async_trainer import AsyncTrainer
 
 reinforceflow.set_random_seed(555)
 

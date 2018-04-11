@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from os.path import expanduser
 try:
     import reinforceflow
 except ImportError:
@@ -11,7 +10,6 @@ except ImportError:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
     import reinforceflow
 from reinforceflow.agents import ActorCritic
-from reinforceflow.core.policy import EGreedyPolicy
 from reinforceflow.models import ActorCriticConv
 from reinforceflow.core.optimizer import RMSProp
 from reinforceflow.envs import AtariWrapper
@@ -26,8 +24,8 @@ env = AtariWrapper(env_name,
                    new_width=84,
                    new_height=84,
                    to_gray=True,
-                   noop_action=[1, 0, 0, 0],
-                   start_action=[0, 1, 0, 0],
+                   noop_action=[1, 0, 0, 0, 0, 0],
+                   start_action=[0, 1, 0, 0, 0, 0],
                    clip_rewards=True)
 test_env = AtariWrapper(env_name,
                         action_repeat=4,
@@ -35,7 +33,7 @@ test_env = AtariWrapper(env_name,
                         new_width=84,
                         new_height=84,
                         to_gray=True,
-                        start_action=[0, 1, 0, 0])
+                        start_action=[0, 1, 0, 0, 0, 0])
 
 agent = ActorCritic(env,
                     model=ActorCriticConv(),

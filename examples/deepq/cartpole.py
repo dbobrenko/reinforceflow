@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from reinforceflow.trainers.replay_trainer import ReplayTrainer
 
 try:
     import reinforceflow
@@ -13,9 +12,10 @@ except ImportError:
     import reinforceflow
 from reinforceflow.agents import DeepQ
 from reinforceflow.envs import Vectorize
-from reinforceflow.core import EGreedyPolicy, ExperienceReplay, ProportionalReplay
+from reinforceflow.core import EGreedyPolicy, ProportionalReplay
 from reinforceflow.core import Adam
 from reinforceflow.models import FullyConnected
+from reinforceflow.trainers.replay_trainer import ReplayTrainer
 reinforceflow.set_random_seed(555)
 
 env_name = 'CartPole-v0'

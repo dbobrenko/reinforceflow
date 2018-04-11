@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 
-from os.path import expanduser
 try:
     import reinforceflow
 except ImportError:
