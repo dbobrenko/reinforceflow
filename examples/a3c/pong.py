@@ -50,8 +50,9 @@ trainer = AsyncTrainer(agent,
                        threads,
                        maxsteps=80000000,
                        batch_size=5,
-                       logdir='/tmp/rf/A3C/%s_paper_4' % env_name,
+                       logdir='/tmp/rf/A3C/%s' % env_name,
                        logfreq=240,
-                       test_env=test_env
+                       test_env=test_env,
+                       test_render=True
                        )
 trainer.train()

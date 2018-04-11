@@ -52,6 +52,7 @@ trainer = AsyncTrainer(agent,
                        batch_size=5,
                        logdir='/tmp/rf/A3C/%s' % env_name,
                        logfreq=240,
-                       test_env=test_env
+                       test_env=test_env,
+                       test_render=True
                        )
 trainer.train()
