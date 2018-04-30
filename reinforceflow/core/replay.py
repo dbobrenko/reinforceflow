@@ -28,7 +28,7 @@ class ExperienceReplay(object):
             capacity = batch_size
         self._capacity = capacity
         self._batch_size = batch_size
-        self._min_size = max(batch_size, min_size)
+        self.min_size = max(batch_size, min_size)
         # Python lists offers ~18% faster index access speed at current setup,
         # at the same time sacrificing ~18% of memory compared to numpy.ndarray.
         self._obs = [0] * (capacity + 1)
@@ -80,7 +80,7 @@ class ExperienceReplay(object):
 
     @property
     def is_ready(self):
-        return self._size >= self._min_size
+        return self._size >= self.min_size
 
     def __len__(self):
         return self._size

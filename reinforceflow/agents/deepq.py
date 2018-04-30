@@ -15,8 +15,8 @@ from reinforceflow.utils import tensor_utils
 class DeepQ(BaseAgent):
     def __init__(self, env, model, use_double=True, restore_from=None, device='/gpu:0',
                  optimizer=None, policy=None, targetfreq=40000, additional_losses=set(),
-                 trajectory_batch=True, trainable_weights=None, target_net=None,
-                 target_weights=None, saver_keep=3, name='DeepQ'):
+                 trainable_weights=None, target_net=None, target_weights=None,
+                 saver_keep=3, name='DeepQ'):
         """Constructs Deep Q-Learning agent.
          Includes the following implementations:
             1. Human-level control through deep reinforcement learning, Mnih et al., 2015.
@@ -51,7 +51,6 @@ class DeepQ(BaseAgent):
         self.use_double = use_double
         self._target_freq = targetfreq
         self.policy = policy
-        self.trajectory_batch = trajectory_batch
         self._last_target_sync = self.step
 
         if isinstance(self.env.action_space, Continuous):
@@ -161,23 +160,6 @@ class DeepQ(BaseAgent):
 
     def train_on_batch(self, obs, actions, rewards, term, obs_next, traj_ends,
                        lr, gamma=0.99, summarize=False, importance=None):
-        """
-
-        Args:
-            obs:
-            actions:
-            rewards:
-            term:
-            obs_next:
-            traj_ends:
-            lr:
-            gamma (float): Reward discount factor.
-            summarize:
-            importance:
-
-        Returns:
-
-        """
         if self.step - self.target_net['last_sync'] > self._target_freq:
             self.target_net['last_sync'] = self.step
             self.target_update()

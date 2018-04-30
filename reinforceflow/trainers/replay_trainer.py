@@ -73,6 +73,7 @@ class ReplayTrainer(BaseTrainer):
             if render:
                 agent.env.render()
             obs = ReplayTrainer.collect_sample(obs, agent, replay, stats)
+            time.sleep(0.01)
 
     def train(self):
         """Starts training."""
@@ -87,6 +88,9 @@ class ReplayTrainer(BaseTrainer):
             t.start()
             while self.agent.step < self.maxsteps:
                 if not self.replay.is_ready:
+                    logger.info("Fulfilling minimum replay size %d/%d."
+                                % (self.replay.size, self.replay.min_size))
+                    time.sleep(2)
                     continue
 
                 obs, actions, rewards, term, obs_next, ends, idxs, importance = self.runner.sample()

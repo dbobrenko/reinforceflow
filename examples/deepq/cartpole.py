@@ -26,8 +26,7 @@ agent = DeepQ(env,
               model=FullyConnected(),
               optimizer=Adam(0.0001),
               targetfreq=10000,
-              policy=EGreedyPolicy(1, 0.4, 300000),
-              trajectory_batch=False)
+              policy=EGreedyPolicy(1, 0.4, 300000))
 
 trainer = ReplayTrainer(env=env,
                         agent=agent,
